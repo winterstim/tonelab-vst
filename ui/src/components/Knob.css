@@ -1,0 +1,65 @@
+.knob-container {
+    position: relative;
+    cursor: ns-resize;
+    
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    
+    user-select: none;
+}
+
+.knob-body {
+    width: 60%;
+    height: 60%;
+    background: radial-gradient(circle at 30% 30%, #3a3a3a, #1a1a1a);
+    border-radius: 50%;
+    box-shadow:
+        0 4px 8px rgba(0, 0, 0, 0.6),
+        inset 0 1px 1px rgba(255, 255, 255, 0.1);
+    position: relative;
+    z-index: 1;
+    overflow: hidden;
+    
+}
+
+.knob-indicator {
+    position: absolute;
+    top: 0;
+    
+    left: 50%;
+    width: 2px;
+    height: 50%;
+    
+    transform-origin: bottom center;
+    
+
+    
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    
+}
+
+
+.knob-indicator::after {
+    content: '';
+    width: 2px;
+    height: 40%;
+    
+    background: #fff;
+    border-radius: 99px;
+    box-shadow: 0 0 4px rgba(255, 255, 255, 0.5);
+}
+
+.knob-label {
+    position: absolute;
+    bottom: 5px;
+    width: 100%;
+    text-align: center;
+    font-size: 10px;
+    color: #888;
+    font-family: sans-serif;
+    pointer-events: none;
+    opacity: 0.8;
+}

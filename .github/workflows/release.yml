@@ -1,0 +1,126 @@
+name: Release Build
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release tag to publish assets to (for example: v0.1.0)'
+        required: true
+        default: 'v0.1.0'
+      source_ref:
+        description: 'Git ref to build from (branch, tag, or commit). Leave empty to use release_tag.'
+        required: false
+        default: ''
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag || (startsWith(github.ref, 'refs/tags/') && github.ref_name || 'v0.1.0') }}
+      BUILD_REF: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.source_ref != '' && github.event.inputs.source_ref || github.event.inputs.release_tag) || github.sha }}
+      # Release defaults embedded into the shipped plugin/UI bundle.
+      TONELAB_VENDOR_URL: https://tonelab-ai.vercel.app
+      TONELAB_SUPPORT_EMAIL: tonelabvst@gmail.com
+      TONELAB_DEFAULT_API_BASE_URL: https://robust-dulciana-tonelab-49d88bd9.koyeb.app/api/v1
+      TONELAB_DEFAULT_WEB_BASE_URL: https://tonelab-ai.vercel.app
+      VITE_TONELAB_API_BASE_URL: https://robust-dulciana-tonelab-49d88bd9.koyeb.app/api/v1
+      VITE_TONELAB_WEB_BASE_URL: https://tonelab-ai.vercel.app
+      VITE_TONELAB_DEFAULT_API_BASE_URL: https://robust-dulciana-tonelab-49d88bd9.koyeb.app/api/v1
+      VITE_TONELAB_DEFAULT_WEB_BASE_URL: https://tonelab-ai.vercel.app
+      VITE_TONELAB_PLUGIN_VERSION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag || (startsWith(github.ref, 'refs/tags/') && github.ref_name || 'v0.1.0') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact_name: tonelab_vst_macos.zip
+            asset_content_type: application/zip
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact_name: tonelab_vst_windows.zip
+            asset_content_type: application/zip
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact_name: tonelab_vst_linux.zip
+            asset_content_type: application/zip
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.BUILD_REF }}
+
+      - name: Install dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libappindicator3-dev librsvg2-dev patchelf libasound2-dev libx11-xcb-dev libjack-jackd2-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      # Optimize Windows build speed
+      - name: Configure Windows Build Speed
+        if: runner.os == 'Windows'
+        run: echo "RUSTFLAGS=-C link-arg=-fuse-ld=lld -C split-debuginfo=unpacked" >> "$GITHUB_ENV"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build UI
+        run: |
+          cd ui
+          npm install
+          npm run build
+
+      - name: Build VST3 Bundle
+        run: cargo run -p xtask -- bundle tonelab_vst --release
+
+      - name: Prepare Artifacts (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          cd target/bundled
+          cp ../../install_mac.command .
+          chmod +x install_mac.command
+          zip -r ../../${{ matrix.artifact_name }} tonelab_vst.vst3 install_mac.command
+
+      - name: Prepare Artifacts (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cd target/bundled
+          Copy-Item -Path ../../install_windows.bat -Destination .
+          Compress-Archive -Path tonelab_vst.vst3, install_windows.bat -DestinationPath "../../${{ matrix.artifact_name }}"
+
+      - name: Prepare Artifacts (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          cd target/bundled
+          zip -r ../../${{ matrix.artifact_name }} tonelab_vst.vst3
+
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v2
+        if: ${{ startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/main' }}
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          files: ${{ matrix.artifact_name }}
+          overwrite_files: true

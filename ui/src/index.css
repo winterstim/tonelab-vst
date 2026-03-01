@@ -1,0 +1,170 @@
+:root {
+  --glass-bg: rgba(255, 255, 255, 0.01);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-highlight: rgba(255, 255, 255, 0.15);
+  --neon-white: rgba(255, 255, 255, 0.8);
+  --neon-glow: 0 0 10px rgba(255, 255, 255, 0.5);
+  --liquid-glass-bg: rgba(12, 12, 12, 0.9);
+  --liquid-glass-blur: 9px;
+  /* Separate shadow definitions */
+  --card-shadow: 0 12px 24px rgba(0, 0, 0, 0.25), 0 4px 8px rgba(0, 0, 0, 0.1);
+  --knob-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+
+  --toolbar-bg: rgba(21, 21, 21, 0.42);
+  --liquid-glass-bg-node: rgba(20, 20, 20, 0.42);
+  /* Slightly brighter, but more transparent to see things underneath */
+  --liquid-glass-bg-knob: #161616;
+  /* Opaque for knobs, very subtle difference from card base */
+  --border-gradient-top: rgba(255, 255, 255, 0.13);
+  --border-gradient-bottom: rgba(0, 0, 0, 0.65);
+  --toolbar-popup-bg: var(--toolbar-bg);
+  --dashboard-border: rgba(255, 255, 255, 0.15);
+}
+
+/* Core surfaces with gradient borders */
+.liquid-glass-surface {
+  background-clip: padding-box, border-box;
+  background-origin: padding-box, border-box;
+  backdrop-filter: blur(var(--liquid-glass-blur)) saturate(135%);
+  -webkit-backdrop-filter: blur(var(--liquid-glass-blur)) saturate(135%);
+  border: 1px solid transparent;
+  /* Removed default shadow to allow specific overrides */
+}
+
+.liquid-glass-node-surface {
+  background-color: var(--liquid-glass-bg-node);
+  border: 1px solid transparent;
+  position: relative;
+  background-clip: padding-box;
+  box-shadow: var(--card-shadow);
+}
+
+.liquid-glass-node-surface::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border: 1px solid transparent;
+  border-radius: inherit;
+  background: linear-gradient(to bottom, var(--border-gradient-top), var(--border-gradient-bottom)) border-box;
+  -webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.liquid-glass-knob-surface {
+  background-clip: padding-box, border-box;
+  background-origin: padding-box, border-box;
+  border: 1px solid transparent;
+  background-image: linear-gradient(var(--liquid-glass-bg-knob), var(--liquid-glass-bg-knob)),
+    linear-gradient(to bottom, var(--border-gradient-top), var(--border-gradient-bottom));
+  box-shadow: var(--knob-shadow);
+}
+
+.liquid-glass-toolbar-surface {
+  background-color: var(--toolbar-bg);
+  position: relative;
+  background-clip: padding-box;
+  box-shadow: var(--card-shadow);
+}
+
+.liquid-glass-toolbar-surface::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border: 1px solid transparent;
+  border-radius: inherit;
+  background: linear-gradient(to bottom, var(--border-gradient-top), var(--border-gradient-bottom)) border-box;
+  -webkit-mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) padding-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  pointer-events: none;
+  z-index: 10;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #0a0a0a;
+  color: #ffffff;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+.react-flow__pane {
+  cursor: grab;
+}
+
+.react-flow__pane.dragging,
+.react-flow__pane.react-flow__pane--dragging {
+  cursor: grabbing;
+}
+
+.react-flow__selection {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border: 1px solid rgba(255, 255, 255, 0.3) !important;
+}
+
+.react-flow__selection-rect {
+  background: rgba(255, 255, 255, 0.05) !important;
+  border: 1px solid rgba(255, 255, 255, 0.3) !important;
+}
+
+.react-flow__nodesselection,
+.react-flow__nodesselection-rect,
+.react-flow__nodes-selection,
+.react-flow__nodes-selection-rect {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.react-flow__node {
+  outline: none;
+}
+
+.react-flow__node.selected {
+  box-shadow: none;
+}
+
+.react-flow__node:focus {
+  outline: none;
+}
+
+.react-flow__handle {
+  background: transparent;
+  border: none;
+}
+
+.port-handle {
+  position: absolute;
+  background: transparent !important;
+  border: none !important;
+  pointer-events: auto;
+}
+
+.port-handle.target {
+  cursor: default !important;
+}
