@@ -1,0 +1,40 @@
+[package]
+name = "tonelab_vst"
+version = "0.1.0"
+edition = "2021"
+license-file = "LICENSE"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[workspace]
+members = ["xtask"]
+
+[dependencies]
+nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", features = ["standalone"] }
+wry = "0.40"
+raw-window-handle = "0.6"
+raw-window-handle-05 = { package = "raw-window-handle", version = "0.5" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+ringbuf = "0.3"
+atomic_float = "0.1"
+arc-swap = "1.7"
+machine-uid = "0.5.4"
+hostname = "0.4.2"
+os_info = "3.14.0"
+directories = "5.0"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc = "0.2"
+cocoa = "0.26.1"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+winreg = "0.50"
+
+[dev-dependencies]
+
+[profile.release]
+lto = "thin"
+strip = true
+codegen-units = 1

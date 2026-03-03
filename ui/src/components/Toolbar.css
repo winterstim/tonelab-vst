@@ -1,0 +1,252 @@
+.toolbar-wrapper {
+    position: relative;
+    overflow: visible;
+
+
+    z-index: 100;
+    display: flex;
+    justify-content: center;
+}
+
+
+.toolbar-underglow {
+    position: absolute;
+
+
+
+    bottom: -42px;
+    left: 50%;
+    transform: translateX(-50%);
+
+
+    width: 340px;
+
+
+
+    height: 28px;
+
+
+    background: radial-gradient(ellipse at bottom, rgba(255, 255, 255, 0.5) 0%, transparent 70%);
+    filter: blur(45px);
+
+    opacity: 0;
+    transition: opacity 0.5s ease-out;
+    pointer-events: none;
+    z-index: 0;
+}
+
+.toolbar-wrapper:hover .toolbar-underglow {
+    opacity: 1;
+}
+
+
+.toolbar-wrapper.force-hover .toolbar-underglow {
+    opacity: 1;
+}
+
+
+.toolbar {
+    position: relative;
+    z-index: 1;
+
+
+    display: flex;
+    justify-content: flex-start;
+
+    align-items: center;
+
+
+    width: 286px;
+
+    height: 48px;
+
+
+
+    border-radius: 999px;
+
+
+
+
+    padding: 0 17px 0 15px;
+
+
+
+    transition: all 0.3s ease;
+}
+
+
+.toolbar-wrapper:hover .toolbar,
+.toolbar-wrapper.force-hover .toolbar {
+
+    transform: translateY(-2px);
+
+}
+
+
+.toolbar-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    height: 100%;
+    transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+
+    color: rgba(255, 255, 255, 0.75);
+}
+
+
+
+
+
+.toolbar-item.logo {
+    margin-right: 6px;
+
+}
+
+.toolbar-item.option {
+    margin: 0 6px;
+
+}
+
+.toolbar-item.dots {
+    margin-left: 6px;
+
+}
+
+
+.toolbar-item.option svg,
+.toolbar-item.dots svg {
+    pointer-events: none;
+    transition: filter 0.3s ease, transform 0.3s ease, color 0.3s ease;
+    will-change: transform, filter;
+    overflow: visible;
+
+
+
+    filter: drop-shadow(0 4px 2px rgba(0, 0, 0, 0.5));
+}
+
+.toolbar-item.option:hover,
+.toolbar-item.dots:hover {
+    color: #fff;
+}
+
+.toolbar-item.option:hover svg,
+.toolbar-item.dots:hover svg {
+
+
+
+    filter: drop-shadow(0 6px 4px rgba(0, 0, 0, 0.6)) drop-shadow(0 0 7px rgba(255, 255, 255, 0.8));
+    transform: scale(1.1);
+}
+
+
+.logo-wrapper {
+    position: relative;
+
+    width: 26px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.logo-grey {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    color: currentColor;
+    opacity: 1;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 10;
+
+
+    filter: drop-shadow(0 4px 2px rgba(0, 0, 0, 0.5));
+}
+
+
+.logo-gradient {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    transform: scale(1);
+
+    filter: drop-shadow(0 0 5px rgba(0, 180, 255, 1)) drop-shadow(0 0 15px rgba(0, 180, 255, 0.6));
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 20;
+}
+
+.toolbar-item.logo:hover .logo-grey {
+    opacity: 0;
+
+    transform: scale(1.1);
+}
+
+.toolbar-item.logo:hover .logo-gradient {
+    opacity: 1;
+    transform: scale(1.1);
+}
+
+
+.menu-popup {
+    position: absolute;
+
+    bottom: 56px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 140px;
+    background: var(--toolbar-popup-bg);
+    backdrop-filter: blur(var(--liquid-glass-blur)) saturate(135%);
+    -webkit-backdrop-filter: blur(var(--liquid-glass-blur)) saturate(135%);
+    border: 1px solid var(--dashboard-border);
+    border-top: 1px solid var(--dashboard-border);
+    border-radius: 16px;
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6);
+    animation: floatUp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    z-index: 200;
+    transform-origin: bottom center;
+}
+
+.menu-button {
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.9);
+    padding: 8px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.2s;
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.menu-button:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    box-shadow: 0 0 15px rgba(255, 255, 255, 0.05);
+}
+
+@keyframes floatUp {
+    from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(15px) scale(0.9);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0) scale(1);
+    }
+}
