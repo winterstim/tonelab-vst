@@ -27,15 +27,16 @@ describe('runtime config', () => {
         }
 
         expect(getApiBaseUrl()).toBe('https://api.tonelab.dev/api/v1');
-        expect(getWebBaseUrl()).toBe('https://vst.tonelab.dev');
+        expect(getWebBaseUrl()).toBe('https://tonelab.dev');
         expect(buildApiUrl('/health')).toBe('https://api.tonelab.dev/api/v1/health');
-        expect(buildWebUrl('/docs')).toBe('https://vst.tonelab.dev/docs');
+        expect(buildWebUrl('/docs')).toBe('https://tonelab.dev/docs');
     });
 
     it('uses injected runtime values when present', () => {
         globalThis.window = {
             TONELAB_API_BASE_URL: 'https://api.example.com',
-            TONELAB_WEB_BASE_URL: 'https://app.example.com/'
+            TONELAB_WEB_BASE_URL: 'https://app.example.com/',
+            location: { origin: 'https://vst.tonelab.dev' }
         };
 
         expect(getApiBaseUrl()).toBe('https://api.example.com');
@@ -77,5 +78,15 @@ describe('runtime config', () => {
         };
 
         expect(detectRuntimeEnvironment()).toBe(RuntimeEnvironment.BROWSER_WEB);
+    });
+
+    it('uses public web base when injected base matches current origin', () => {
+        globalThis.window = {
+            TONELAB_WEB_BASE_URL: 'https://vst.tonelab.dev',
+            location: { origin: 'https://vst.tonelab.dev' }
+        };
+
+        expect(getWebBaseUrl()).toBe('https://tonelab.dev');
+        expect(buildWebUrl('/user/cabinet')).toBe('https://tonelab.dev/user/cabinet');
     });
 });
