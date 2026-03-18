@@ -1,6 +1,7 @@
 import { EFFECTS_METADATA } from '../config/effects';
 import { buildApiUrl, getWebBaseUrl } from '../config/runtime';
 import { openExternalUrl } from '../utils/externalNavigation';
+import { postIpcMessage } from '../utils/ipcBridge';
 
 const ACCESS_TOKEN_STORAGE_KEY = 'tonelab.api.access_token';
 const REFRESH_TOKEN_STORAGE_KEY = 'tonelab.api.refresh_token';
@@ -10,64 +11,6 @@ const AUTH_POLL_INTERVAL_MS = 1500;
 const REQUEST_TIMEOUT_MS = 45000;
 const NETWORK_RETRY_DELAY_MS = 700;
 const NETWORK_MAX_ATTEMPTS = 2;
-
-const EFFECT_ALIASES = {
-    overdrive: 'Overdrive',
-    distortion: 'Overdrive',
-    amp_sim: 'Overdrive',
-    amp: 'Overdrive',
-    delay: 'Delay',
-    echo: 'Delay',
-    reverb: 'Reverb',
-    hall: 'Reverb',
-    noisegate: 'NoiseGate',
-    noise_gate: 'NoiseGate',
-    gate: 'NoiseGate',
-    compressor: 'NoiseGate',
-    eq: 'Equalizer',
-    threebandeq: 'Equalizer',
-    three_band_eq: 'Equalizer',
-    equalizer: 'Equalizer'
-};
-
-const PARAM_ALIASES = {
-    Overdrive: {
-        amount: 'drive',
-        distortion: 'drive',
-        gain: 'output_gain',
-        level: 'output_gain',
-        output: 'output_gain',
-        volume: 'output_gain'
-    },
-    Delay: {
-        time: 'time_ms',
-        delay: 'time_ms',
-        delay_ms: 'time_ms',
-        repeats: 'feedback',
-        wet: 'mix'
-    },
-    Reverb: {
-        size: 'room_size',
-        decay: 'room_size',
-        pre_delay: 'pre_delay_ms',
-        predelay: 'pre_delay_ms',
-        wet: 'mix'
-    },
-    NoiseGate: {
-        threshold: 'threshold_db',
-        attack: 'attack_ms',
-        release: 'release_ms',
-        decay: 'release_ms'
-    },
-    Equalizer: {
-        bass: 'low_gain',
-        low: 'low_gain',
-        mids: 'mid_gain',
-        mid: 'mid_gain',
-        treble: 'high_gain',
-        high: 'high_gain'
-    }
-};
 
 function getStorage() {
     if (typeof window === 'undefined') return null;
@@ -219,12 +162,12 @@ function setStoredTokens(accessToken, refreshToken = '') {
     }
 
     // 1. Sync with Rust backend (robust persistence)
-    if (typeof window !== 'undefined' && window.ipc && window.ipc.postMessage) {
+    if (typeof window !== 'undefined') {
         remoteLog('Sending save_token IPC message...');
-        window.ipc.postMessage(JSON.stringify({
+        postIpcMessage({
             type: 'save_token',
             token: token
-        }));
+        });
     }
 
     // 2. Backup to localStorage (browser/dev mode AND VST fallback)
@@ -253,8 +196,8 @@ export function clearStoredTokens() {
 
 function remoteLog(msg) {
     // Send log to Rust backend for file logging (bypass console issues)
-    if (typeof window !== 'undefined' && window.ipc && window.ipc.postMessage) {
-        window.ipc.postMessage(JSON.stringify({ type: 'log', message: msg }));
+    if (typeof window !== 'undefined') {
+        postIpcMessage({ type: 'log', message: msg });
     }
 
 }
@@ -375,6 +318,14 @@ function clamp(value, min, max) {
     return Math.min(max, Math.max(min, value));
 }
 
+function normalizeAliasKey(value) {
+    return String(value || '')
+        .toLowerCase()
+        .trim()
+        .replace(/[\s-]+/g, '_')
+        .replace(/[^a-z0-9_]/g, '');
+}
+
 function normalizeEffectType(rawType) {
     if (typeof rawType !== 'string' || !rawType.trim()) return null;
 
@@ -386,8 +337,13 @@ function normalizeEffectType(rawType) {
     );
     if (directInsensitive) return directInsensitive;
 
-    const aliasKey = direct.toLowerCase().replace(/[\s-]+/g, '_');
-    return EFFECT_ALIASES[aliasKey] || null;
+    const aliasKey = normalizeAliasKey(direct);
+    const aliased = Object.values(EFFECTS_METADATA).find((effect) => {
+        if (!effect) return false;
+        const effectAliases = Array.isArray(effect.aliases) ? effect.aliases : [];
+        return effectAliases.some((alias) => normalizeAliasKey(alias) === aliasKey);
+    });
+    return aliased?.id || null;
 }
 
 function normalizeParamKey(effectType, rawKey) {
@@ -401,9 +357,12 @@ function normalizeParamKey(effectType, rawKey) {
     );
     if (keyInsensitive) return keyInsensitive;
 
-    const aliases = PARAM_ALIASES[effectType] || {};
-    const aliasKey = rawKey.toLowerCase().replace(/[\s-]+/g, '_');
-    if (aliases[aliasKey]) return aliases[aliasKey];
+    const aliasKey = normalizeAliasKey(rawKey);
+    const aliasMatch = Object.entries(effectConfig.params).find(([, config]) => {
+        const aliases = Array.isArray(config?.aliases) ? config.aliases : [];
+        return aliases.some((alias) => normalizeAliasKey(alias) === aliasKey);
+    });
+    if (aliasMatch) return aliasMatch[0];
 
     const compactRaw = rawKey.toLowerCase().replace(/[^a-z0-9]/g, '');
     const normalizedMatch = Object.keys(effectConfig.params).find((key) => {
@@ -414,19 +373,15 @@ function normalizeParamKey(effectType, rawKey) {
     return normalizedMatch || null;
 }
 
-function transformParamValue(effectType, paramKey, value, paramConfig) {
+function transformParamValue(paramKey, value, paramConfig) {
     let normalized = value;
 
     if (paramConfig.max <= 1 && normalized > 1 && normalized <= 100) {
         normalized = normalized / 100;
     }
 
-    if (effectType === 'Delay' && paramKey === 'time_ms' && normalized > 0 && normalized <= 10) {
+    if (paramKey.endsWith('_ms') && paramConfig.max >= 100 && normalized > 0 && normalized <= 10) {
         normalized = normalized * 1000;
-    }
-
-    if (effectType === 'Reverb' && paramKey === 'room_size' && normalized > 1) {
-        normalized = normalized / 5;
     }
 
     return clamp(normalized, paramConfig.min, paramConfig.max);
@@ -485,7 +440,7 @@ function normalizeParams(effectType, rawParams) {
             return;
         }
 
-        params[paramKey] = transformParamValue(effectType, paramKey, numeric, paramConfig);
+        params[paramKey] = transformParamValue(paramKey, numeric, paramConfig);
         appliedCount += 1;
     });
 

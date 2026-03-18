@@ -111,3 +111,9 @@ export const DotsIcon = (props) => (
     <circle cx="30" cy="17" r="4" fill="currentColor" fillOpacity="1" />
   </svg>
 );
+
+export const SquareIcon = (props) => (
+  <svg width="26" height="26" viewBox="0 0 35 35" fill="none" xmlns="http://www.w3.org/2000/svg" {...props}>
+    <rect x="5" y="5" width="25" height="25" rx="4" stroke="currentColor" strokeWidth="2" strokeOpacity="1" />
+  </svg>
+);

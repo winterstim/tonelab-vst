@@ -11,6 +11,7 @@ pub enum AudioEffectParams {
     NoiseGate(effects::NoiseGateParams),
     Equalizer(effects::EqualizerParams),
     Reverb(effects::ReverbParams),
+    Cabinet(effects::CabinetParams),
 }
 
 #[derive(Debug)]
@@ -20,6 +21,7 @@ pub enum AudioEffect {
     NoiseGate(Arc<effects::NoiseGate>),
     Equalizer(Arc<effects::Equalizer>),
     Reverb(Arc<effects::Reverb>),
+    Cabinet(Arc<effects::Cabinet>),
 }
 
 impl AudioEffect {
@@ -30,6 +32,7 @@ impl AudioEffect {
             AudioEffectParams::NoiseGate(d) => AudioEffect::NoiseGate(Arc::new(d.into())),
             AudioEffectParams::Equalizer(d) => AudioEffect::Equalizer(Arc::new(d.into())),
             AudioEffectParams::Reverb(d) => AudioEffect::Reverb(Arc::new(d.into())),
+            AudioEffectParams::Cabinet(d) => AudioEffect::Cabinet(Arc::new(d.into())),
         }
     }
 
@@ -40,6 +43,7 @@ impl AudioEffect {
             AudioEffect::NoiseGate(d) => AudioEffectParams::NoiseGate(d.as_ref().into()),
             AudioEffect::Equalizer(d) => AudioEffectParams::Equalizer(d.as_ref().into()),
             AudioEffect::Reverb(d) => AudioEffectParams::Reverb(d.as_ref().into()),
+            AudioEffect::Cabinet(d) => AudioEffectParams::Cabinet(d.as_ref().into()),
         }
     }
 }
@@ -275,6 +279,7 @@ impl EffectImpl for AudioEffect {
             AudioEffect::NoiseGate(e) => e.process(l, r),
             AudioEffect::Equalizer(e) => e.process(l, r),
             AudioEffect::Reverb(e) => e.process(l, r),
+            AudioEffect::Cabinet(e) => e.process(l, r),
         }
     }
 
@@ -301,6 +306,11 @@ impl EffectImpl for AudioEffect {
                 }
             }
             AudioEffect::Reverb(e) => {
+                if let Some(m) = Arc::get_mut(e) {
+                    m.reset(sample_rate);
+                }
+            }
+            AudioEffect::Cabinet(e) => {
                 if let Some(m) = Arc::get_mut(e) {
                     m.reset(sample_rate);
                 }
@@ -348,6 +358,9 @@ impl Chain {
                     AudioEffectParams::Reverb(p) => p
                         .validate()
                         .map_err(|e| format!("Validation Error: {}", e))?,
+                    AudioEffectParams::Cabinet(p) => p
+                        .validate()
+                        .map_err(|e| format!("Validation Error: {}", e))?,
                 }
                 effects.push(AudioEffect::from_params(params));
             }
@@ -376,6 +389,9 @@ impl Chain {
                     .validate()
                     .map_err(|e| format!("Validation Error: {}", e))?,
                 AudioEffectParams::Reverb(p) => p
+                    .validate()
+                    .map_err(|e| format!("Validation Error: {}", e))?,
+                AudioEffectParams::Cabinet(p) => p
                     .validate()
                     .map_err(|e| format!("Validation Error: {}", e))?,
             }
@@ -493,6 +509,22 @@ impl AudioEffect {
                 "pre_delay_ms" => e
                     .pre_delay_ms
                     .store(value, std::sync::atomic::Ordering::Relaxed),
+                _ => {}
+            },
+            AudioEffect::Cabinet(e) => match key {
+                "cabinet" => e.cabinet.store(value, std::sync::atomic::Ordering::Relaxed),
+                "mix" => e.mix.store(value, std::sync::atomic::Ordering::Relaxed),
+                "low_cut" => e.low_cut.store(value, std::sync::atomic::Ordering::Relaxed),
+                "high_cut" => e
+                    .high_cut
+                    .store(value, std::sync::atomic::Ordering::Relaxed),
+                "presence" => e
+                    .presence
+                    .store(value, std::sync::atomic::Ordering::Relaxed),
+                "mid_peak" => e
+                    .mid_peak
+                    .store(value, std::sync::atomic::Ordering::Relaxed),
+                "gain" => e.gain.store(value, std::sync::atomic::Ordering::Relaxed),
                 _ => {}
             },
         }

@@ -1,130 +1,75 @@
-# Tonelab VST User Guide
+# Tonelab VST (Evergreen Architecture)
 
-Welcome to Tonelab VST — an innovative audio plugin that combines advanced algorithms for generating effect chains with a user-friendly visual interface for fine-tuning your sound.
+Tonelab is a VST3 plugin with a thin native host and remotely delivered runtime assets.
 
----
+## What Is Evergreen
 
-## 1. Plugin Installation
+- The VST bundle contains host/runtime glue and audio I/O.
+- DSP is delivered as signed `engine.wasm` from backend `/vst/sync`.
+- UI is loaded from `assets.web_ui_url` (local dev or your future production domain).
+- Effect metadata is delivered from `assets.effects_url` and drives the UI dynamically.
+- No embedded dashboard HTML is required in the plugin bundle.
+- The host does not map hardcoded effect names/types; chain and param updates are forwarded to wasm as JSON payloads.
 
-Download the latest plugin archive for your operating system (`.zip` files available on the releases page or after purchase).
+## Repository Layout
 
-### Windows Installation
+- `src/`: VST host/plugin code (Rust)
+- `wasm-engine-rust/`: DSP wasm engine source (Rust)
+- `backend/`: sync API + assets server (Go)
+- `ui/`: remote dashboard app (Vite/React)
+- `scripts/evergreen_up.sh`: build/install/start pipeline
+- `scripts/evergreen_down.sh`: stop backend/UI started by script
+- `AGENT_EVERGREEN_BUILD_VERIFY.md`: detailed verification runbook
 
-1. Extract the downloaded `tonelab_vst_windows.zip` archive.
-2. Double-click **`install_windows.bat`**.
-3. It will ask for Administrator permissions in order to copy the plugin to the system folder (`C:\Program Files\Common Files\VST3\`). Click **"Yes"**.
-4. The script will automatically install the plugin. 
-5. You're all set! The plugin is now available in your DAW.
+## Quick Local Start
 
-### macOS Installation
+From repo root:
 
-1. **Extract** the `tonelab_vst_macos.zip` archive (do not run it directly from inside the zip).
-2. **Right-click** (or Control-click) the **`install_mac.command`** script, select **Open**, and then click **Open** again if a security warning appears.
-3. The Terminal will open. **Enter your Mac login password** and press Return (the characters won't appear as you type, this is normal).
-4. The script will automatically copy the plugin to your VST3 folder and remove macOS security blocks!
-5. You can now close the Terminal and launch your DAW.
+```bash
+./scripts/evergreen_up.sh --skip-backup
+```
 
-**Alternative Manual Method:**
-If the script doesn't work, you can do it manually:
-1. Copy the `tonelab_vst.vst3` file.
-2. Open **Finder**, press `Cmd + Shift + G`, type `/Library/Audio/Plug-Ins/VST3/`, and paste the plugin there.
-3. Open Terminal and run: `sudo xattr -rd com.apple.quarantine /Library/Audio/Plug-Ins/VST3/tonelab_vst.vst3`
+This does, in order:
 
-### Linux Installation
+1. Builds `wasm-engine-rust` for `wasm32-unknown-unknown`
+2. Copies wasm to `backend/assets/engine.wasm`
+3. Signs wasm (`engine.wasm.sig.b64`)
+4. Builds and installs VST3 via `xtask`
+5. Starts backend (`/vst/sync`) and UI dev server
 
-1. Extract the `tonelab_vst_linux.zip` archive.
-2. Move the `tonelab_vst.vst3` file to the `~/.vst3/` directory (if the folder doesn't exist, create it).
-3. Restart your DAW.
+Then open any DAW and scan/load `Tonelab VST v0.2.0`.
 
----
+## Manual Verification
 
-## 2. Opening the Plugin in Your DAW
+```bash
+cargo check
+cargo test
+cd backend && go test ./... && cd ..
+cd ui && npm test -- --run && npm run build && cd ..
+```
 
-Once installed, the plugin is ready to use.
+Live sync check (while backend is running):
 
+```bash
+curl -s http://localhost:8080/vst/sync | jq .
+asset_sig=$(cat backend/assets/engine.wasm.sig.b64)
+sync_sig=$(curl -s http://localhost:8080/vst/sync | jq -r '.signature')
+test "$asset_sig" = "$sync_sig" && echo "signature ok" || echo "signature mismatch"
+```
 
-1. Launch your favorite DAW (Ableton Live, FL Studio, Logic Pro, Reaper, Bitwig, etc.).
-2. Create a new audio track or select an existing one (e.g., a guitar or vocal track).
-3. Open the plugin browser in your DAW and find the **VST3** section.
-4. Locate **Tonelab VST** in the plugins list (it might be under the manufacturer's folder or in the general list) and drag it onto your track.
-5. The main Tonelab interface window will open!
+## Deployment Model
 
----
+- Put UI on your domain (e.g. `https://app.example.com`).
+- Set backend `EVERGREEN_WEB_UI_URL` to that UI URL.
+- Backend returns UI URL + signed wasm URLs in `/vst/sync`.
+- Plugin loads UI remotely and applies DSP via wasm runtime.
 
-## 3. Interface Overview
+## Notes
 
-The Tonelab interface consists of two main areas: a spacious workspace (Dashboard) for effect cards and a bottom control panel (Toolbar).
+- Cached evergreen assets are used only after a successful signed load.
+- If backend is unavailable before first successful sync, DSP runtime is unavailable.
+- Security material under `backend/security/keys/` is local/dev-only and ignored.
 
+## License
 
-- **Workspace (Node Graph):** Here you visually build your effect chain. You can move cards around, connect them with wires, and adjust parameters for each effect.
-- **Toolbar:** Located at the bottom center. It contains the Tonelab logo, icons for manually adding effects, and an options menu.
-- **Update Notice:** If a critical or important update is available for the plugin, a subtle notification will appear at the top of the screen. Clicking it will start the installation of the latest version.
-
----
-
-## 4. Assistant Sound Generation
-
-The most powerful feature of Tonelab is its ability to generate a ready-to-use effect chain based on a text description.
-
-
-1. Click on the **Tonelab Assistant** logo (the leftmost icon on the toolbar).
-2. The toolbar will transform into a text input field.
-3. Type the sound you want to achieve. For example: *"Make a warm distortion with long reverb and a slight delay"*.
-4. Press `Enter` on your keyboard or click the white submit button on the right side of the input field.
-
-
-**Authorization & Subscription:**
-- If this is your first request, the plugin will pause and automatically open a page in your web browser.
-- Log in to your account on the opened Tonelab website page (you must have an active subscription).
-- After successfully logging in, return to your DAW — the plugin will detect your authorization and continue loading your chain.
-- The Assistant will automatically place the necessary effects on the screen with optimal parameter settings and wire them together.
-
----
-
-## 5. Manual Chain Creation & Editing
-
-You can build chains from scratch or tweak the ones generated by the Assistant.
-
-### Adding Effects
-The toolbar contains icons for basic effects: Equalizer, Overdrive, Noise Gate, Reverb, Delay. Simply click on an icon, and the corresponding effect card will appear in the center of the screen.
-
-### Connecting Effects
-To route audio from one effect to another:
-1. Click and hold the left mouse button on the circle (output node) on the right side of an effect card.
-2. Drag the wire that appears to the circle (input node) on the left side of another card, then release the button.
-3. To delete a wire, just click on the effect and delete it by selecting it and pressing `Backspace` or `Delete`.
-
-### Adjusting Knobs
-Each card contains parameter knobs. To adjust them:
-- Click and hold the left mouse button on a knob.
-- Drag your mouse up or down to smoothly change the value.
-- To remove an effect from the screen, click it to select it and press `Delete` or `Backspace` on your keyboard. You can also use the number keys (e.g., `1` or `2`) to quickly spawn certain effects.
-
----
-
-## 6. Activating the Effect Chain
-
-For the plugin to start processing your audio, you need to tell it exactly which chain you want to listen to. This allows you to keep multiple ideas or guitar tone variations on the same screen.
-
-
-1. Hold down the `Shift` key on your keyboard and click sequentially connected effects to **select** them. (They will be highlighted with a visual outline).
-2. Select the entire chain from start to finish.
-3. Once the plugin recognizes that you've selected a valid chain, an **Activation (Play)** button will pop up near the toolbar.
-4. Click this button. The chain will be locked into the plugin's active memory, and your DAW's audio will start being processed through these effects! To turn off processing, click the button again (Stop).
-
----
-
-## 7. Options Menu
-
-
-On the right side of the toolbar, there is a button with three dots `...`. Clicking it opens a pop-up menu:
-- **Documentation:** Opens the documentation and tutorials in your web browser.
-- **Personal Cabinet:** Opens your personal profile page where you can check your subscription status, profile details, and billing.
-
----
-
-## 8. License
-
-This software is licensed under the **PolyForm Noncommercial License 1.0.0**.
-
-You are free to use, modify, and share this software for noncommercial purposes. Commercial use or monetization of this software is strictly prohibited. See `LICENSE` for details.
+See `LICENSE`.

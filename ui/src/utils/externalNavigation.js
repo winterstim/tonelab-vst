@@ -1,9 +1,10 @@
+import { postIpcMessage } from './ipcBridge';
+
 export function openExternalUrl(url) {
-    if (typeof window !== 'undefined' && window.ipc?.postMessage) {
-        window.ipc.postMessage(JSON.stringify({
+    if (typeof window !== 'undefined' && postIpcMessage({
             type: 'open_external_url',
             url
-        }));
+        })) {
         return;
     }
 

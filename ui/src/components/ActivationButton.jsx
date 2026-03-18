@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 
 const ActivationButton = ({ state, onClick, isHovered }) => {
     const [showTooltip, setShowTooltip] = useState(false);
-    const size = 48;
+    const size = 56;
 
     const renderIconPath = () => (
         state === 'start' ? (
@@ -41,13 +41,13 @@ const ActivationButton = ({ state, onClick, isHovered }) => {
             }}
         >
             {/* Base icon (grey) */}
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" style={{ position: 'absolute', transition: 'all 0.3s ease' }}>
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" style={{ position: 'absolute', transition: 'all 0.3s ease' }}>
                 {renderIconPath()}
             </svg>
 
             {/* Gradient icon (overlay, fades in on hover) */}
             <svg
-                width="28" height="28" viewBox="0 0 24 24" fill="none"
+                width="32" height="32" viewBox="0 0 24 24" fill="none"
                 className="activation-icon-gradient"
                 style={{
                     position: 'absolute',

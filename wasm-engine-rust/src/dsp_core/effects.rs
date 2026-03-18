@@ -91,9 +91,10 @@ impl EffectImpl for Overdrive {
         let output_gain = clamp_finite(self.output_gain.load(Ordering::Relaxed), 0.0, 2.0, 1.0);
 
         let gain_factor = 1.0 + drive * 19.0;
+        let norm_factor = gain_factor.sqrt();
 
-        let wet_l = (l * gain_factor).tanh();
-        let wet_r = (r * gain_factor).tanh();
+        let wet_l = (l * gain_factor).tanh() / norm_factor;
+        let wet_r = (r * gain_factor).tanh() / norm_factor;
 
         let out_l = l * (1.0 - mix) + wet_l * mix;
         let out_r = r * (1.0 - mix) + wet_r * mix;
@@ -1345,5 +1346,356 @@ mod tests {
         assert!(max_out.is_finite());
 
         assert!(max_out > 0.0);
+    }
+}
+
+use std::sync::OnceLock;
+
+fn load_ir(bytes: &[u8]) -> Vec<f32> {
+    let mut ir = Vec::with_capacity(bytes.len() / 4);
+    for chunk in bytes.chunks_exact(4) {
+        let b: [u8; 4] = [chunk[0], chunk[1], chunk[2], chunk[3]];
+        let u = u32::from_le_bytes(b);
+        ir.push(f32::from_bits(u));
+    }
+    ir
+}
+
+fn normalize_ir(mut ir: Vec<f32>) -> Vec<f32> {
+    if ir.is_empty() {
+        return ir;
+    }
+    let mut energy = 0.0f32;
+    for x in &ir {
+        energy += x * x;
+    }
+    let rms = (energy / ir.len() as f32).sqrt();
+    if rms > 0.00001 {
+        // Target a reasonable RMS level (e.g., 0.15) so switching IRs is consistent
+        let scale = 0.15 / rms;
+        for x in &mut ir {
+            *x *= scale;
+        }
+    }
+    ir
+}
+
+fn get_irs() -> &'static [Vec<f32>; 4] {
+    static IRS: OnceLock<[Vec<f32>; 4]> = OnceLock::new();
+    IRS.get_or_init(|| {
+        [
+            normalize_ir(load_ir(include_bytes!("irs/cab_0.bin"))),
+            normalize_ir(load_ir(include_bytes!("irs/cab_1.bin"))),
+            normalize_ir(load_ir(include_bytes!("irs/cab_2.bin"))),
+            normalize_ir(load_ir(include_bytes!("irs/cab_3.bin"))),
+        ]
+    })
+}
+
+#[derive(Debug)]
+pub struct Cabinet {
+    pub cabinet: AtomicF32,
+    pub mix: AtomicF32,
+    pub low_cut: AtomicF32,
+    pub high_cut: AtomicF32,
+    pub presence: AtomicF32,
+    pub mid_peak: AtomicF32,
+    pub gain: AtomicF32,
+
+    // Filters state
+    lp_l: std::cell::UnsafeCell<f32>,
+    lp_r: std::cell::UnsafeCell<f32>,
+    hp_y_l: std::cell::UnsafeCell<f32>,
+    hp_y_r: std::cell::UnsafeCell<f32>,
+    hp_x_l: std::cell::UnsafeCell<f32>,
+    hp_x_r: std::cell::UnsafeCell<f32>,
+
+    // Peaking EQ state (Presence ~3kHz, Mid ~800Hz)
+    // We'll use simple 1-pole or 2nd order approximations
+    // For simplicity and VST speed, let's use 1-pole shelving/peaking
+    pres_l: std::cell::UnsafeCell<f32>,
+    pres_r: std::cell::UnsafeCell<f32>,
+    midl_l: std::cell::UnsafeCell<f32>,
+    midl_r: std::cell::UnsafeCell<f32>,
+
+    history_l: std::cell::UnsafeCell<Vec<f32>>,
+    history_r: std::cell::UnsafeCell<Vec<f32>>,
+    pos: std::cell::UnsafeCell<usize>,
+    sample_rate: AtomicF32,
+}
+unsafe impl Sync for Cabinet {}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct CabinetParams {
+    pub cabinet: f32,
+    pub mix: f32,
+    pub low_cut: f32,
+    pub high_cut: f32,
+    pub presence: f32,
+    pub mid_peak: f32,
+    pub gain: f32,
+}
+
+impl Default for CabinetParams {
+    fn default() -> Self {
+        Self {
+            cabinet: 0.0,
+            mix: 1.0,
+            low_cut: 80.0,
+            high_cut: 12000.0,
+            presence: 0.0,
+            mid_peak: 0.0,
+            gain: 0.0,
+        }
+    }
+}
+
+impl CabinetParams {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.cabinet < 0.0 || self.cabinet > 3.0 {
+            return Err(format!("Cabinet 'cabinet' out of bounds: {}", self.cabinet));
+        }
+        if self.mix < 0.0 || self.mix > 1.0 {
+            return Err(format!("Cabinet 'mix' out of bounds: {}", self.mix));
+        }
+        if self.low_cut < 20.0 || self.low_cut > 1000.0 {
+            return Err(format!("Cabinet 'low_cut' out of bounds: {}", self.low_cut));
+        }
+        if self.high_cut < 500.0 || self.high_cut > 21000.0 {
+            return Err(format!(
+                "Cabinet 'high_cut' out of bounds: {}",
+                self.high_cut
+            ));
+        }
+        if self.presence < -12.0 || self.presence > 12.0 {
+            return Err(format!(
+                "Cabinet 'presence' out of bounds: {}",
+                self.presence
+            ));
+        }
+        if self.mid_peak < -12.0 || self.mid_peak > 12.0 {
+            return Err(format!(
+                "Cabinet 'mid_peak' out of bounds: {}",
+                self.mid_peak
+            ));
+        }
+        if self.gain < -24.0 || self.gain > 12.0 {
+            return Err(format!("Cabinet 'gain' out of bounds: {}", self.gain));
+        }
+        Ok(())
+    }
+}
+
+impl From<CabinetParams> for Cabinet {
+    fn from(p: CabinetParams) -> Self {
+        Self {
+            cabinet: AtomicF32::new(p.cabinet),
+            mix: AtomicF32::new(p.mix),
+            low_cut: AtomicF32::new(p.low_cut),
+            high_cut: AtomicF32::new(p.high_cut),
+            presence: AtomicF32::new(p.presence),
+            mid_peak: AtomicF32::new(p.mid_peak),
+            gain: AtomicF32::new(p.gain),
+            lp_l: std::cell::UnsafeCell::new(0.0),
+            lp_r: std::cell::UnsafeCell::new(0.0),
+            hp_y_l: std::cell::UnsafeCell::new(0.0),
+            hp_y_r: std::cell::UnsafeCell::new(0.0),
+            hp_x_l: std::cell::UnsafeCell::new(0.0),
+            hp_x_r: std::cell::UnsafeCell::new(0.0),
+            pres_l: std::cell::UnsafeCell::new(0.0),
+            pres_r: std::cell::UnsafeCell::new(0.0),
+            midl_l: std::cell::UnsafeCell::new(0.0),
+            midl_r: std::cell::UnsafeCell::new(0.0),
+            history_l: std::cell::UnsafeCell::new(Vec::new()),
+            history_r: std::cell::UnsafeCell::new(Vec::new()),
+            pos: std::cell::UnsafeCell::new(0),
+            sample_rate: AtomicF32::new(44100.0),
+        }
+    }
+}
+
+impl From<&Cabinet> for CabinetParams {
+    fn from(c: &Cabinet) -> Self {
+        Self {
+            cabinet: c.cabinet.load(Ordering::Relaxed),
+            mix: c.mix.load(Ordering::Relaxed),
+            low_cut: c.low_cut.load(Ordering::Relaxed),
+            high_cut: c.high_cut.load(Ordering::Relaxed),
+            presence: c.presence.load(Ordering::Relaxed),
+            mid_peak: c.mid_peak.load(Ordering::Relaxed),
+            gain: c.gain.load(Ordering::Relaxed),
+        }
+    }
+}
+
+impl EffectImpl for Cabinet {
+    fn process(&self, l: f32, r: f32) -> (f32, f32) {
+        let cab_idx =
+            clamp_finite(self.cabinet.load(Ordering::Relaxed).round(), 0.0, 3.0, 0.0) as usize;
+        let mix = clamp_finite(self.mix.load(Ordering::Relaxed), 0.0, 1.0, 1.0);
+        let irs = get_irs();
+        let ir = if cab_idx < irs.len() {
+            &irs[cab_idx]
+        } else {
+            &irs[0]
+        };
+
+        let hl = unsafe { &mut *self.history_l.get() };
+        let hr = unsafe { &mut *self.history_r.get() };
+        let pos_ptr = self.pos.get();
+        let mut pos = unsafe { *pos_ptr };
+
+        if hl.len() != ir.len() {
+            hl.resize(ir.len(), 0.0);
+            hr.resize(ir.len(), 0.0);
+            pos = 0;
+        }
+
+        hl[pos] = l;
+        hr[pos] = r;
+
+        let mut out_l = 0.0;
+        let mut out_r = 0.0;
+
+        let len = ir.len();
+        let mut idx = pos;
+
+        // Fast convolution loop
+        for i in 0..len {
+            let coef = ir[i];
+            out_l += hl[idx] * coef;
+            out_r += hr[idx] * coef;
+            if idx == 0 {
+                idx = len - 1;
+            } else {
+                idx -= 1;
+            }
+        }
+
+        pos += 1;
+        if pos >= len {
+            pos = 0;
+        }
+        unsafe {
+            *pos_ptr = pos;
+        }
+
+        // Post-convolution filters (Tone shaping)
+        let sr = self.sample_rate.load(Ordering::Relaxed);
+        let lc_freq = self.low_cut.load(Ordering::Relaxed);
+        let hc_freq = self.high_cut.load(Ordering::Relaxed);
+        let pres_db = self.presence.load(Ordering::Relaxed);
+        let mid_db = self.mid_peak.load(Ordering::Relaxed);
+        let gain_db = self.gain.load(Ordering::Relaxed);
+        let gain_linear = 10.0f32.powf(gain_db / 20.0);
+
+        // 1. Low Cut (HPF 1-pole)
+        let hp_alpha = {
+            let rc = 1.0 / (2.0 * std::f32::consts::PI * lc_freq);
+            let dt = 1.0 / sr;
+            rc / (rc + dt)
+        };
+
+        let mut hp_l = unsafe {
+            let y_ptr = self.hp_y_l.get();
+            let x_ptr = self.hp_x_l.get();
+            let y = hp_alpha * (*y_ptr + out_l - *x_ptr);
+            *x_ptr = out_l;
+            *y_ptr = y;
+            y
+        };
+        let mut hp_r = unsafe {
+            let y_ptr = self.hp_y_r.get();
+            let x_ptr = self.hp_x_r.get();
+            let y = hp_alpha * (*y_ptr + out_r - *x_ptr);
+            *x_ptr = out_r;
+            *y_ptr = y;
+            y
+        };
+
+        // 2. Mid Peak (~800Hz boost/cut, simple 1-pole peaking approx)
+        if mid_db.abs() > 0.05 {
+            let mid_alpha = (2.0 * std::f32::consts::PI * 800.0 / sr).min(0.9);
+            let mid_scale = 10.0f32.powf(mid_db / 40.0) - 1.0;
+
+            hp_l += unsafe {
+                let y_ptr = self.midl_l.get();
+                let y = *y_ptr + mid_alpha * (hp_l - *y_ptr);
+                *y_ptr = y;
+                y * mid_scale
+            };
+            hp_r += unsafe {
+                let y_ptr = self.midl_r.get();
+                let y = *y_ptr + mid_alpha * (hp_r - *y_ptr);
+                *y_ptr = y;
+                y * mid_scale
+            };
+        }
+
+        // 3. Presence (~3.5kHz boost, simple 1-pole peaking approx)
+        if pres_db.abs() > 0.05 {
+            let pres_alpha = (2.0 * std::f32::consts::PI * 3500.0 / sr).min(0.9);
+            let pres_scale = 10.0f32.powf(pres_db / 40.0) - 1.0;
+
+            hp_l += unsafe {
+                let y_ptr = self.pres_l.get();
+                let y = *y_ptr + pres_alpha * (hp_l - *y_ptr);
+                *y_ptr = y;
+                y * pres_scale
+            };
+            hp_r += unsafe {
+                let y_ptr = self.pres_r.get();
+                let y = *y_ptr + pres_alpha * (hp_r - *y_ptr);
+                *y_ptr = y;
+                y * pres_scale
+            };
+        }
+
+        // 4. High Cut (LPF 1-pole EMA)
+        let lp_alpha = {
+            let omega = 2.0 * std::f32::consts::PI * hc_freq / sr;
+            (omega / (omega + 1.0)).clamp(0.0, 1.0)
+        };
+
+        let lp_l = unsafe {
+            let y_ptr = self.lp_l.get();
+            let y = *y_ptr + lp_alpha * (hp_l - *y_ptr);
+            *y_ptr = y;
+            y
+        };
+        let lp_r = unsafe {
+            let y_ptr = self.lp_r.get();
+            let y = *y_ptr + lp_alpha * (hp_r - *y_ptr);
+            *y_ptr = y;
+            y
+        };
+
+        let wet_l = lp_l * gain_linear;
+        let wet_r = lp_r * gain_linear;
+
+        (l * (1.0 - mix) + wet_l * mix, r * (1.0 - mix) + wet_r * mix)
+    }
+
+    fn reset(&mut self, sample_rate: f32) {
+        self.sample_rate.store(sample_rate, Ordering::Relaxed);
+        unsafe {
+            *self.lp_l.get() = 0.0;
+            *self.lp_r.get() = 0.0;
+            *self.hp_y_l.get() = 0.0;
+            *self.hp_y_r.get() = 0.0;
+            *self.hp_x_l.get() = 0.0;
+            *self.hp_x_r.get() = 0.0;
+            *self.pres_l.get() = 0.0;
+            *self.pres_r.get() = 0.0;
+            *self.midl_l.get() = 0.0;
+            *self.midl_r.get() = 0.0;
+            if let Some(hl) = self.history_l.get().as_mut() {
+                hl.fill(0.0);
+            }
+            if let Some(hr) = self.history_r.get().as_mut() {
+                hr.fill(0.0);
+            }
+            *self.pos.get() = 0;
+        }
     }
 }

@@ -159,7 +159,7 @@ fn run_installer_with_metadata(
     install_bundle(&source_bundle, &destination_bundle)?;
 
     #[cfg(target_os = "macos")]
-    patch_info_plist_for_ats(&destination_bundle)?;
+    patch_info_plist_for_ats(&destination_bundle, &metadata.package_version)?;
 
     run_post_install_hooks(&destination_bundle)?;
 
@@ -557,20 +557,23 @@ fn copy_dir_recursive(source: &Path, destination: &Path) -> Result<()> {
 }
 
 #[cfg(target_os = "macos")]
-fn patch_info_plist_for_ats(bundle_path: &Path) -> Result<()> {
+fn patch_info_plist_for_ats(bundle_path: &Path, package_version: &str) -> Result<()> {
     let plist_path = bundle_path.join("Contents/Info.plist");
     if !plist_path.exists() {
         return Ok(());
     }
 
     let mut content = fs::read_to_string(&plist_path)?;
+    let mut changed = false;
+    let display_name = format!("Tonelab VST v{}", package_version.trim());
 
-    // Check if already patched
-    if content.contains("NSAppTransportSecurity") {
-        return Ok(());
-    }
+    content = replace_plist_string_value(&content, "CFBundleDisplayName", &display_name);
+    content = replace_plist_string_value(&content, "CFBundleName", &display_name);
+    content = replace_plist_string_value(&content, "CFBundleShortVersionString", package_version);
+    content = replace_plist_string_value(&content, "CFBundleVersion", package_version);
 
-    let ats_xml = r#"    <key>NSAppTransportSecurity</key>
+    if !content.contains("NSAppTransportSecurity") {
+        let ats_xml = r#"    <key>NSAppTransportSecurity</key>
     <dict>
         <key>NSAllowsArbitraryLoads</key>
         <true/>
@@ -578,16 +581,49 @@ fn patch_info_plist_for_ats(bundle_path: &Path) -> Result<()> {
   </dict>
 </plist>"#;
 
-    // Try to replace the closing tags. The indentation in the file is 2 spaces.
-    let target = "  </dict>\n</plist>";
-    if content.contains(target) {
-        content = content.replace(target, ats_xml);
-        fs::write(&plist_path, content)?;
-        println!("Patched Info.plist with NSAppTransportSecurity");
-    } else {
-        println!("Warning: Could not patch Info.plist (structure mismatch)");
+        // Try to replace the closing tags. The indentation in the file is 2 spaces.
+        let target = "  </dict>\n</plist>";
+        if content.contains(target) {
+            content = content.replace(target, ats_xml);
+            changed = true;
+            println!("Patched Info.plist with NSAppTransportSecurity");
+        } else {
+            println!("Warning: Could not patch Info.plist (structure mismatch)");
+        }
     }
+
+    if content != fs::read_to_string(&plist_path)? {
+        changed = true;
+    }
+
+    if changed {
+        fs::write(&plist_path, content)?;
+    }
+
     Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn replace_plist_string_value(content: &str, key: &str, value: &str) -> String {
+    let key_marker = format!("<key>{}</key>", key);
+    let Some(key_pos) = content.find(&key_marker) else {
+        return content.to_string();
+    };
+    let search_start = key_pos + key_marker.len();
+    let Some(string_open_rel) = content[search_start..].find("<string>") else {
+        return content.to_string();
+    };
+    let value_start = search_start + string_open_rel + "<string>".len();
+    let Some(string_close_rel) = content[value_start..].find("</string>") else {
+        return content.to_string();
+    };
+    let value_end = value_start + string_close_rel;
+
+    let mut updated = String::with_capacity(content.len() + value.len());
+    updated.push_str(&content[..value_start]);
+    updated.push_str(value.trim());
+    updated.push_str(&content[value_end..]);
+    updated
 }
 
 fn run_post_install_hooks(bundle_path: &Path) -> Result<()> {

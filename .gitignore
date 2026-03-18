@@ -1,7 +1,18 @@
 # Rust / Cargo
 /target/
+wasm-engine-rust/target/
 **/*.rs.bk
-Cargo.lock
+
+# Local generated plugin bundles
+/tonelab_vst.app/
+/tonelab_vst.vst3/
+
+# Local backend build artifacts
+/backend/backend
+/backend/.bin/
+
+# Local backup archives
+/backups/
 
 # OS
 .DS_Store
@@ -14,6 +25,7 @@ Cargo.lock
 .env
 .env.local
 .env.*.local
+/ui/.env.development
 
 # Public Release Export
 product_release/

@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import './Knob.css';
 
-export default function Knob({ size = 106, value = 0.5, label = "", onChange }) {
+export default function Knob({ size = 106, value = 0.5, label = "", onChange, onDoubleClick, onDragStart }) {
 
 
 
@@ -9,6 +9,7 @@ export default function Knob({ size = 106, value = 0.5, label = "", onChange }) 
 
 
     const [isDragging, setIsDragging] = useState(false);
+    const dragAccumulator = useRef(value);
 
 
 
@@ -20,17 +21,13 @@ export default function Knob({ size = 106, value = 0.5, label = "", onChange }) 
         e.stopPropagation();
         e.preventDefault();
         setIsDragging(true);
-
+        dragAccumulator.current = value;
+        if (onDragStart) onDragStart(value);
     };
 
     useEffect(() => {
         const handleMouseMove = (e) => {
             if (!isDragging) return;
-
-
-
-
-
 
             const deltaX = e.movementX;
             const deltaY = -e.movementY;
@@ -38,16 +35,19 @@ export default function Knob({ size = 106, value = 0.5, label = "", onChange }) 
             const sensitivity = 0.005;
             const delta = (deltaX + deltaY) * sensitivity;
 
+            // Use the accumulator to track movement independently of the rounded 'value'
+            dragAccumulator.current += delta;
 
+            let newValue = dragAccumulator.current;
 
-
-
-
-            let newValue = value + delta;
-
-
-            if (newValue < 0) newValue = 0;
-            if (newValue > 1) newValue = 1;
+            if (newValue < 0) {
+                newValue = 0;
+                dragAccumulator.current = 0;
+            }
+            if (newValue > 1) {
+                newValue = 1;
+                dragAccumulator.current = 1;
+            }
 
             if (onChange) onChange(newValue);
         };
@@ -74,6 +74,7 @@ export default function Knob({ size = 106, value = 0.5, label = "", onChange }) 
             className="knob-container nodrag nopan"
             style={{ width: size, height: size, position: 'relative' }}
             onMouseDown={handleMouseDown}
+            onDoubleClick={onDoubleClick}
         >
             <div
                 className="liquid-glass-knob-surface"
