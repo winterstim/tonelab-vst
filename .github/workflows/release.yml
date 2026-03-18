@@ -36,6 +36,7 @@ jobs:
       TONELAB_DEFAULT_WEB_BASE_URL: https://vst.tonelab.dev
       VITE_TONELAB_API_BASE_URL: https://api.tonelab.dev/api/v1
       VITE_TONELAB_WEB_BASE_URL: https://vst.tonelab.dev
+      VITE_TONELAB_ASSETS_BASE_URL: https://tonelab-vst-api-1017035171566.us-central1.run.app/assets
       VITE_TONELAB_DEFAULT_API_BASE_URL: https://api.tonelab.dev/api/v1
       VITE_TONELAB_DEFAULT_WEB_BASE_URL: https://vst.tonelab.dev
       VITE_TONELAB_PLUGIN_VERSION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag || (startsWith(github.ref, 'refs/tags/') && github.ref_name || 'v0.1.0') }}
