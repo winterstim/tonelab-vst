@@ -129,10 +129,20 @@
 
 .toolbar-item.option .toolbar-effect-icon {
     pointer-events: none;
+    display: inline-block;
+    width: 26px;
+    height: 26px;
+    background-color: currentColor;
+    mask-position: center;
+    mask-repeat: no-repeat;
+    mask-size: contain;
+    -webkit-mask-position: center;
+    -webkit-mask-repeat: no-repeat;
+    -webkit-mask-size: contain;
     transition: filter 0.3s ease, transform 0.3s ease, opacity 0.3s ease;
     will-change: transform, filter, opacity;
-    filter: brightness(0) invert(1) drop-shadow(0 4px 2px rgba(0, 0, 0, 0.5));
-    opacity: 0.75;
+    filter: drop-shadow(0 4px 2px rgba(0, 0, 0, 0.5));
+    opacity: 1;
 }
 
 .toolbar-item.option:hover,
@@ -150,7 +160,7 @@
 }
 
 .toolbar-item.option:hover .toolbar-effect-icon {
-    filter: brightness(0) invert(1) drop-shadow(0 6px 4px rgba(0, 0, 0, 0.6)) drop-shadow(0 0 7px rgba(255, 255, 255, 0.8));
+    filter: drop-shadow(0 6px 4px rgba(0, 0, 0, 0.6)) drop-shadow(0 0 7px rgba(255, 255, 255, 0.8));
     transform: scale(1.1);
     opacity: 1;
 }
