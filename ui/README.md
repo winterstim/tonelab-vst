@@ -91,8 +91,8 @@ Primary UI variables (browser/dev mode):
 - `VITE_TONELAB_API_BASE_URL`
 - `VITE_TONELAB_WEB_BASE_URL`
 - `VITE_TONELAB_API_PREFIX` (optional, default empty)
-- `VITE_TONELAB_DEFAULT_API_BASE_URL` (default fallback: `https://robust-dulciana-tonelab-49d88bd9.koyeb.app/api/v1`)
-- `VITE_TONELAB_DEFAULT_WEB_BASE_URL` (default fallback: `https://tonelab.dev`)
+- `VITE_TONELAB_DEFAULT_API_BASE_URL` (default fallback: `https://api.tonelab.dev/api/v1`)
+- `VITE_TONELAB_DEFAULT_WEB_BASE_URL` (default fallback: `https://ui-4zrbgo8gh-tims-projects-ee1c21b4.vercel.app`)
 
 Runtime variables injected by Rust in embedded VST mode:
 - `window.TONELAB_API_BASE_URL`

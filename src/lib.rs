@@ -89,12 +89,12 @@ const PLUGIN_SUPPORT_EMAIL: &str = match option_env!("TONELAB_SUPPORT_EMAIL") {
 
 const DEFAULT_API_BASE_URL: &str = match option_env!("TONELAB_DEFAULT_API_BASE_URL") {
     Some(value) => value,
-    None => "https://robust-dulciana-tonelab-49d88bd9.koyeb.app/api/v1",
+    None => "https://api.tonelab.dev/api/v1",
 };
 
 const DEFAULT_WEB_BASE_URL: &str = match option_env!("TONELAB_DEFAULT_WEB_BASE_URL") {
     Some(value) => value,
-    None => "https://tonelab.dev",
+    None => "https://ui-4zrbgo8gh-tims-projects-ee1c21b4.vercel.app",
 };
 
 const DEFAULT_API_PREFIX: &str = match option_env!("TONELAB_DEFAULT_API_PREFIX") {

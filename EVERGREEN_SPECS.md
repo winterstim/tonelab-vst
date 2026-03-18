@@ -53,13 +53,13 @@ Message sent via `window.ipc.postMessage(json)`:
 Endpoint `GET /vst/sync`:
 ```json
 {
-  "version": "1.0.0",
-  "wasm_url": "https://assets.tonelab.dev/v1/engine.wasm",
+  "version": "0.2.0",
+  "wasm_url": "https://tonelab-vst-api-1017035171566.us-central1.run.app/assets/engine.wasm",
   "signature": "base64_ed25519_sig",
   "assets": {
-    "icons_url": "https://assets.tonelab.dev/v1/icons.zip",
-    "web_ui_url": "https://vst.tonelab.dev",
-    "effects_url": "https://assets.tonelab.dev/v1/effects_manifest.json"
+    "icons_url": "https://tonelab-vst-api-1017035171566.us-central1.run.app/assets/icons.zip",
+    "web_ui_url": "https://ui-4zrbgo8gh-tims-projects-ee1c21b4.vercel.app",
+    "effects_url": "https://tonelab-vst-api-1017035171566.us-central1.run.app/assets/effects_manifest.json"
   }
 }
 ```
