@@ -26,7 +26,7 @@ const (
 	defaultRateLimitRPS  = 60.0
 	defaultRateLimitBurst = 120.0
 	defaultRateLimitTTL  = 2 * time.Minute
-	defaultCORSOrigins   = "http://localhost:5173,https://vst.tonelab.dev,https://ui-4zrbgo8gh-tims-projects-ee1c21b4.vercel.app,https://tonelab.dev"
+	defaultCORSOrigins   = "*"
 )
 
 type syncAssets struct {
@@ -99,7 +99,7 @@ func main() {
 		_ = json.NewEncoder(w).Encode(resp)
 	})
 
-	assets := http.FileServer(http.Dir(cfg.AssetsDir))
+	assets := http.StripPrefix("/assets/", http.FileServer(http.Dir(cfg.AssetsDir)))
 	mux.Handle("/assets/", withRateLimit(withCORS(assets, cfg), limiter))
 
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
