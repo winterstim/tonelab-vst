@@ -1,5 +1,5 @@
 const LOCAL_DEFAULT_API_BASE = 'https://api.tonelab.dev/api/v1';
-const LOCAL_DEFAULT_WEB_BASE = 'https://vst.tonelab.dev';
+const LOCAL_DEFAULT_WEB_BASE = 'https://tonelab.dev';
 const DEFAULT_API_PREFIX = '';
 const RUNTIME_ENV_VST = 'vst-embedded';
 const RUNTIME_ENV_DEV_BROWSER = 'browser-dev';
@@ -70,8 +70,14 @@ export function getWebBaseUrl() {
         import.meta.env.VITE_TONELAB_WEB_BASE_URL,
         readWindowString('TONELAB_WEB_BASE_URL')
     ]);
-
-    return normalizeOrigin(configuredBase, DEFAULT_WEB_BASE);
+    const resolved = normalizeOrigin(configuredBase, DEFAULT_WEB_BASE);
+    if (typeof window !== 'undefined') {
+        const currentOrigin = normalizeOrigin(window.location?.origin || '', '');
+        if (currentOrigin && resolved === currentOrigin) {
+            return DEFAULT_WEB_BASE;
+        }
+    }
+    return resolved;
 }
 
 export function buildApiUrl(path) {

@@ -39,6 +39,43 @@ function createProcessId() {
     return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+async function startDesktopAuth({ signal } = {}) {
+    const startUrl = buildApiUrl('/auth/google/desktop/start');
+    const response = await fetchWithTimeout(
+        startUrl,
+        {
+            method: 'GET',
+            headers: {
+                Accept: 'application/json'
+            },
+            credentials: 'omit'
+        },
+        signal
+    );
+
+    if (!response.ok) {
+        const message = await extractErrorMessage(response);
+        throw new Error(`Authorization start failed (${response.status}): ${message}`);
+    }
+
+    const payload = await parseJsonResponse(response);
+    const processId = typeof payload?.process_id === 'string'
+        ? payload.process_id.trim()
+        : typeof payload?.processId === 'string'
+            ? payload.processId.trim()
+            : '';
+
+    if (!processId) {
+        throw new Error('Authorization start failed: process_id missing');
+    }
+
+    const authUrl = typeof payload?.auth_url === 'string' && payload.auth_url.trim()
+        ? payload.auth_url.trim()
+        : `${getWebBaseUrl()}/auth?process_id=${encodeURIComponent(processId)}`;
+
+    return { processId, authUrl };
+}
+
 function sleep(ms, signal) {
     return new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
@@ -205,11 +242,12 @@ function remoteLog(msg) {
 export async function authorizeDesktopUser({ signal, onStatus } = {}) {
     throwIfAborted(signal);
 
-    const processId = createProcessId();
-    const authUrl = `${getWebBaseUrl()}/auth?process_id=${encodeURIComponent(processId)}`;
+    onStatus?.('Requesting sign in link...');
+    const { processId, authUrl } = await startDesktopAuth({ signal });
 
     remoteLog(`Starting desktop auth. Process ID: ${processId}`);
     remoteLog(`WebView Origin: ${window.location.origin}`);
+    remoteLog(`Auth URL: ${authUrl}`);
 
     onStatus?.('Opening browser for sign in...');
     openSystemBrowser(authUrl);

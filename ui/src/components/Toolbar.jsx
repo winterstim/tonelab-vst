@@ -141,14 +141,12 @@ export default function Toolbar({ onSpawn, onLoadChain, isHovered, effectOptions
                                     onMouseLeave={() => setHoveredItem(null)}
                                 >
                                     {item.icon_url ? (
-                                        <img
-                                            src={item.icon_url}
-                                            alt={item.label || item.type || item.id}
-                                            width={20}
-                                            height={20}
-                                            draggable={false}
+                                        <span
                                             className="toolbar-effect-icon"
-                                            style={{ objectFit: 'contain' }}
+                                            style={{
+                                                WebkitMaskImage: `url(${item.icon_url})`,
+                                                maskImage: `url(${item.icon_url})`,
+                                            }}
                                         />
                                     ) : (
                                         <span
