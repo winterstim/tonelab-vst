@@ -94,7 +94,7 @@ const DEFAULT_API_BASE_URL: &str = match option_env!("TONELAB_DEFAULT_API_BASE_U
 
 const DEFAULT_WEB_BASE_URL: &str = match option_env!("TONELAB_DEFAULT_WEB_BASE_URL") {
     Some(value) => value,
-    None => "https://ui-4zrbgo8gh-tims-projects-ee1c21b4.vercel.app",
+    None => "https://vst.tonelab.dev",
 };
 
 const DEFAULT_API_PREFIX: &str = match option_env!("TONELAB_DEFAULT_API_PREFIX") {
