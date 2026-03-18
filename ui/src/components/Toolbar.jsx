@@ -184,7 +184,7 @@ export default function Toolbar({ onSpawn, onLoadChain, isHovered, effectOptions
                                         <button
                                             className="menu-button"
                                             onClick={() => {
-                                                openExternalUrl(buildWebUrl('/docs'));
+                                                openExternalUrl('https://tonelab.dev/vst/docs');
                                                 setIsOptionsOpen(false);
                                             }}
                                         >

@@ -26,6 +26,7 @@ const (
 	defaultRateLimitRPS  = 60.0
 	defaultRateLimitBurst = 120.0
 	defaultRateLimitTTL  = 2 * time.Minute
+	defaultCORSOrigins   = "http://localhost:5173,https://vst.tonelab.dev,https://ui-4zrbgo8gh-tims-projects-ee1c21b4.vercel.app,https://tonelab.dev"
 )
 
 type syncAssets struct {
@@ -55,6 +56,7 @@ type serverConfig struct {
 	RateLimitRPS      float64
 	RateLimitBurst    float64
 	RateLimitTTL      time.Duration
+	CORSOrigins       []string
 }
 
 func main() {
@@ -66,7 +68,7 @@ func main() {
 	mux := http.NewServeMux()
 	limiter := newRateLimiter(cfg.RateLimitRPS, cfg.RateLimitBurst, cfg.RateLimitTTL)
 	mux.HandleFunc("/vst/sync", func(w http.ResponseWriter, r *http.Request) {
-		setCORSHeaders(w)
+		setCORSHeaders(w, r, cfg)
 		setSecurityHeaders(w)
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
@@ -98,10 +100,10 @@ func main() {
 	})
 
 	assets := http.FileServer(http.Dir(cfg.AssetsDir))
-	mux.Handle("/assets/", withRateLimit(withCORS(assets), limiter))
+	mux.Handle("/assets/", withRateLimit(withCORS(assets, cfg), limiter))
 
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		setCORSHeaders(w)
+		setCORSHeaders(w, r, cfg)
 		setSecurityHeaders(w)
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
@@ -165,6 +167,7 @@ func loadConfig() (serverConfig, error) {
 		RateLimitRPS:      envOrDefaultFloat("EVERGREEN_RATE_LIMIT_RPS", defaultRateLimitRPS),
 		RateLimitBurst:    envOrDefaultFloat("EVERGREEN_RATE_LIMIT_BURST", defaultRateLimitBurst),
 		RateLimitTTL:      envOrDefaultDuration("EVERGREEN_RATE_LIMIT_TTL", defaultRateLimitTTL),
+		CORSOrigins:       parseCORSOrigins(envOrDefault("EVERGREEN_CORS_ORIGINS", defaultCORSOrigins)),
 	}
 
 	if !filepath.IsAbs(cfg.SignatureFilePath) {
@@ -229,8 +232,58 @@ func envOrDefaultDuration(name string, fallback time.Duration) time.Duration {
 	return fallback
 }
 
-func setCORSHeaders(w http.ResponseWriter) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
+func normalizeOrigin(origin string) string {
+	trimmed := strings.TrimSpace(origin)
+	return strings.TrimRight(trimmed, "/")
+}
+
+func parseCORSOrigins(value string) []string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return nil
+	}
+
+	parts := strings.Split(trimmed, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		normalized := normalizeOrigin(part)
+		if normalized == "" {
+			continue
+		}
+		out = append(out, normalized)
+	}
+	return out
+}
+
+func isOriginAllowed(origin string, allowed []string) bool {
+	for _, entry := range allowed {
+		if entry == "*" {
+			return true
+		}
+		if origin == entry {
+			return true
+		}
+	}
+	return false
+}
+
+func setCORSHeaders(w http.ResponseWriter, r *http.Request, cfg serverConfig) {
+	origin := normalizeOrigin(r.Header.Get("Origin"))
+	allowedOrigin := ""
+	if len(cfg.CORSOrigins) == 0 {
+		allowedOrigin = "*"
+	} else if origin != "" && isOriginAllowed(origin, cfg.CORSOrigins) {
+		allowedOrigin = origin
+	}
+
+	if allowedOrigin != "" {
+		w.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
+		if allowedOrigin != "*" {
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+			w.Header().Add("Vary", "Origin")
+		}
+	}
+
 	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 }
@@ -241,9 +294,9 @@ func setSecurityHeaders(w http.ResponseWriter) {
 	w.Header().Set("X-Frame-Options", "DENY")
 }
 
-func withCORS(next http.Handler) http.Handler {
+func withCORS(next http.Handler, cfg serverConfig) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		setCORSHeaders(w)
+		setCORSHeaders(w, r, cfg)
 		setSecurityHeaders(w)
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)

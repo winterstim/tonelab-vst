@@ -33,11 +33,11 @@ jobs:
       TONELAB_VENDOR_URL: https://tonelab.dev
       TONELAB_SUPPORT_EMAIL: tonelabvst@gmail.com
       TONELAB_DEFAULT_API_BASE_URL: https://api.tonelab.dev/api/v1
-      TONELAB_DEFAULT_WEB_BASE_URL: https://ui-4zrbgo8gh-tims-projects-ee1c21b4.vercel.app
+      TONELAB_DEFAULT_WEB_BASE_URL: https://vst.tonelab.dev
       VITE_TONELAB_API_BASE_URL: https://api.tonelab.dev/api/v1
-      VITE_TONELAB_WEB_BASE_URL: https://ui-4zrbgo8gh-tims-projects-ee1c21b4.vercel.app
+      VITE_TONELAB_WEB_BASE_URL: https://vst.tonelab.dev
       VITE_TONELAB_DEFAULT_API_BASE_URL: https://api.tonelab.dev/api/v1
-      VITE_TONELAB_DEFAULT_WEB_BASE_URL: https://ui-4zrbgo8gh-tims-projects-ee1c21b4.vercel.app
+      VITE_TONELAB_DEFAULT_WEB_BASE_URL: https://vst.tonelab.dev
       VITE_TONELAB_PLUGIN_VERSION: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag || (startsWith(github.ref, 'refs/tags/') && github.ref_name || 'v0.1.0') }}
     strategy:
       fail-fast: false

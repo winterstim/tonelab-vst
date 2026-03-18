@@ -58,7 +58,7 @@ Endpoint `GET /vst/sync`:
   "signature": "base64_ed25519_sig",
   "assets": {
     "icons_url": "https://tonelab-vst-api-1017035171566.us-central1.run.app/assets/icons.zip",
-    "web_ui_url": "https://ui-4zrbgo8gh-tims-projects-ee1c21b4.vercel.app",
+    "web_ui_url": "https://vst.tonelab.dev",
     "effects_url": "https://tonelab-vst-api-1017035171566.us-central1.run.app/assets/effects_manifest.json"
   }
 }
