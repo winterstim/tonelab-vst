@@ -5,6 +5,11 @@ import { viteSingleFile } from "vite-plugin-singlefile"
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), viteSingleFile()],
+  server: {
+    host: 'localhost',
+    port: 5173,
+    strictPort: true,
+  },
   base: './',
   build: {
     outDir: 'dist',

@@ -1,11 +1,14 @@
-import React, { useState, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { getIsInsideVST } from './config/runtime';
 import { applyNodeChanges } from '@xyflow/react';
 import Toolbar from './components/Toolbar';
+import ContextMenu from './components/ContextMenu';
 import Dashboard from './components/Dashboard';
 import ActivationButton from './components/ActivationButton';
 import UpdateNotice from './components/UpdateNotice';
 import { useBridge } from './hooks/useBridge';
 import { fetchPluginUpdateInfo, installPluginUpdate } from './services/pluginUpdateApi';
+import { postIpcMessage } from './utils/ipcBridge';
 
 import { EFFECTS_METADATA } from './config/effects';
 import { getCardMetrics } from './utils/layout';
@@ -21,6 +24,112 @@ function App() {
 
 
   const [isSelecting, setIsSelecting] = useState(false);
+  const [contextMenu, setContextMenu] = useState(null);
+
+  // ============================
+  // GLOBAL UNDO/REDO LOGIC
+  // ============================
+  const globalHistoryRef = useRef({ past: [], future: [] });
+  const currentStateRef = useRef({ flowNodes: [], wires: [] });
+
+  useEffect(() => {
+    currentStateRef.current = { flowNodes, wires };
+  }, [flowNodes, wires]);
+
+  const pushHistory = useCallback(() => {
+    const { flowNodes: currentNodes, wires: currentWires } = currentStateRef.current;
+    const cloneNodes = (ns) => ns.map(n => ({
+      ...n,
+      position: { ...n.position },
+      data: {
+        ...n.data,
+        node: n.data?.node ? {
+          ...n.data.node,
+          params: { ...n.data.node.params }
+        } : undefined
+      }
+    }));
+    const cloneWires = (ws) => ws.map(w => ({ ...w }));
+
+    globalHistoryRef.current.past.push({
+      flowNodes: cloneNodes(currentNodes),
+      wires: cloneWires(currentWires)
+    });
+    if (globalHistoryRef.current.past.length > 50) {
+      globalHistoryRef.current.past.shift();
+    }
+    globalHistoryRef.current.future = [];
+  }, []);
+
+  const undo = useCallback(() => {
+    const cloneNodes = (ns) => ns.map(n => ({
+      ...n,
+      position: { ...n.position },
+      data: {
+        ...n.data,
+        node: n.data?.node ? {
+          ...n.data.node,
+          params: { ...n.data.node.params }
+        } : undefined
+      }
+    }));
+    const cloneWires = (ws) => ws.map(w => ({ ...w }));
+
+    if (globalHistoryRef.current.past.length > 0) {
+      const prev = globalHistoryRef.current.past.pop();
+      const { flowNodes: currentNodes, wires: currentWires } = currentStateRef.current;
+      globalHistoryRef.current.future.push({
+        flowNodes: cloneNodes(currentNodes),
+        wires: cloneWires(currentWires)
+      });
+      setFlowNodes(prev.flowNodes);
+      setWires(prev.wires);
+      setContextMenu(null);
+    }
+  }, []);
+
+  const redo = useCallback(() => {
+    const cloneNodes = (ns) => ns.map(n => ({
+      ...n,
+      position: { ...n.position },
+      data: {
+        ...n.data,
+        node: n.data?.node ? {
+          ...n.data.node,
+          params: { ...n.data.node.params }
+        } : undefined
+      }
+    }));
+    const cloneWires = (ws) => ws.map(w => ({ ...w }));
+
+    if (globalHistoryRef.current.future.length > 0) {
+      const next = globalHistoryRef.current.future.pop();
+      const { flowNodes: currentNodes, wires: currentWires } = currentStateRef.current;
+      globalHistoryRef.current.past.push({
+        flowNodes: cloneNodes(currentNodes),
+        wires: cloneWires(currentWires)
+      });
+      setFlowNodes(next.flowNodes);
+      setWires(next.wires);
+      setContextMenu(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleUndoRedoKeys = (e) => {
+      if (e.target.matches('input, textarea')) return;
+
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) redo();
+        else undo();
+      }
+    };
+    window.addEventListener('keydown', handleUndoRedoKeys);
+    return () => window.removeEventListener('keydown', handleUndoRedoKeys);
+  }, [undo, redo]);
+  // ============================
+
   const selectionSnapshotRef = useRef(null);
   const additiveSelectionRef = useRef(false);
   const shiftKeyRef = useRef(false);
@@ -52,6 +161,20 @@ function App() {
 
 
   const [activeChainIds, setActiveChainIds] = useState(new Set());
+  const effectsBootstrapError =
+    typeof window !== 'undefined' && typeof window.TONELAB_EFFECTS_BOOTSTRAP_ERROR === 'string'
+      ? window.TONELAB_EFFECTS_BOOTSTRAP_ERROR
+      : '';
+  const effectOptions = useMemo(
+    () =>
+      Object.values(EFFECTS_METADATA).map((effect) => ({
+        id: effect.id,
+        type: effect.id,
+        label: effect.label || effect.id,
+        icon_url: effect.icon_url || '',
+      })),
+    [],
+  );
 
 
 
@@ -153,6 +276,8 @@ function App() {
   const handleLoadChain = (chainData) => {
     if (!chainData || chainData.length === 0) return;
 
+    pushHistory();
+
 
 
 
@@ -237,7 +362,7 @@ function App() {
   };
 
   const handleSpawnNode = (type) => {
-
+    pushHistory();
     const effectDef = EFFECTS_METADATA[type];
     if (!effectDef) {
       return;
@@ -310,16 +435,53 @@ function App() {
 
       const index = sortedActive.findIndex(n => n.id === id);
 
-      if (index !== -1 && window.ipc) {
-        window.ipc.postMessage(JSON.stringify({
+      if (index !== -1) {
+        postIpcMessage({
           type: "param_change",
           index: index,
           param_key: paramKey,
           value: newVal
-        }));
+        });
       }
     }
   };
+
+  const handleParamDragStart = useCallback((id, paramKey, val) => {
+    pushHistory();
+  }, [pushHistory]);
+
+  const handleDoubleClickKnob = useCallback((id, paramKey) => {
+    undo();
+  }, [undo]);
+
+  const handleDuplicateNode = useCallback((nodeId) => {
+    pushHistory();
+    const existing = flowNodes.find(n => n.id === nodeId);
+    if (!existing) return;
+    const dataNode = existing.data?.node;
+    if (!dataNode) return;
+    const newId = Math.random().toString(36).substring(2, 15);
+    const newNode = {
+      ...dataNode,
+      id: newId,
+      x: dataNode.x + 30,
+      y: dataNode.y + 30
+    };
+    const newFlowNode = {
+      id: newId,
+      type: 'card',
+      position: { x: newNode.x, y: newNode.y },
+      data: { node: newNode },
+      selected: true
+    };
+    setFlowNodes(prev => prev.map(n => ({ ...n, selected: false })).concat(newFlowNode));
+  }, [flowNodes]);
+
+  const handleDeleteNode = useCallback((nodeId) => {
+    pushHistory();
+    setFlowNodes(prev => prev.filter(n => n.id !== nodeId));
+    setWires(prev => prev.filter(w => w.fromNode !== nodeId && w.toNode !== nodeId));
+  }, []);
 
   const getNodeMetrics = useCallback((node) => {
     const effectMeta = EFFECTS_METADATA[node.type];
@@ -426,6 +588,7 @@ function App() {
       ...n,
       selected: n.id === node.id
     })));
+    setContextMenu({ x: event.clientX, y: event.clientY, nodeId: node.id });
   }, []);
 
   const handleNodeClick = useCallback((event, node) => {
@@ -440,6 +603,7 @@ function App() {
   const handleNodesChange = useCallback((changes) => {
     const removedIds = changes.filter(change => change.type === 'remove').map(change => change.id);
     if (removedIds.length > 0) {
+      pushHistory();
       setWires(prev => prev.filter(wire => !removedIds.includes(wire.fromNode) && !removedIds.includes(wire.toNode)));
     }
 
@@ -507,6 +671,9 @@ function App() {
   }, [getNodeMetrics, isSelecting, view.x, view.y, view.zoom]);
 
   const handleEdgesChange = useCallback((changes) => {
+    const hasRemove = changes.some(c => c.type === 'remove');
+    if (hasRemove) pushHistory();
+
     setWires(prev => {
       let next = prev;
       changes.forEach(change => {
@@ -546,6 +713,8 @@ function App() {
     if (connection.source === connection.target) return;
     if (!isValidConnection(connection)) return;
 
+    pushHistory();
+
     setWires(prev => {
       const cleanTarget = prev.filter(w => w.toNode !== connection.target);
       const cleanSourceAndTarget = cleanTarget.filter(w => w.fromNode !== connection.source);
@@ -578,6 +747,8 @@ function App() {
           ...node.data,
           node: mergedNode,
           onParamChange: handleParamChange,
+          onParamDragStart: handleParamDragStart,
+          onDoubleClickKnob: handleDoubleClickKnob,
           forceSelected: forcedSelected
         },
         style: {
@@ -610,18 +781,16 @@ function App() {
       if (e.target.matches('input, textarea')) return;
 
 
-      if (e.key === '1') {
-
-        handleSpawnNode('Overdrive');
+      if (e.key === '1' && effectOptions[0]?.type) {
+        handleSpawnNode(effectOptions[0].type);
       }
-      if (e.key === '2') {
-
-        handleSpawnNode('Delay');
+      if (e.key === '2' && effectOptions[1]?.type) {
+        handleSpawnNode(effectOptions[1].type);
       }
 
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (selectedNodeIds.size > 0) {
-
+          pushHistory();
           setFlowNodes(prev => prev.filter(n => !selectedNodeIds.has(n.id)));
 
           setWires(prev => prev.filter(w => !selectedNodeIds.has(w.fromNode) && !selectedNodeIds.has(w.toNode)));
@@ -643,7 +812,7 @@ function App() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedNodeIds]);
+  }, [effectOptions, selectedNodeIds]);
 
 
   const [isInterfaceHovered, setIsInterfaceHovered] = useState(false);
@@ -704,6 +873,48 @@ function App() {
       setIsInstallingUpdate(false);
     }
   }, [isInstallingUpdate]);
+  const allPlayButtonContexts = useMemo(() => {
+    // 1. Find all distinct chains (connected components)
+    const visited = new Set();
+    const chains = [];
+
+    nodes.forEach(startNode => {
+      if (visited.has(startNode.id)) return;
+
+      const chainNodes = findConnectedComponent(startNode.id);
+      const chainNodesList = [];
+      chainNodes.forEach(id => {
+        visited.add(id);
+        const node = nodes.find(n => n.id === id);
+        if (node) chainNodesList.push(node);
+      });
+      chains.push({
+        nodeIds: chainNodes,
+        nodes: chainNodesList
+      });
+    });
+
+    // 2. Map each chain to its UI position and state
+    return chains.map(chain => {
+      if (chain.nodes.length === 0) return null;
+
+      const firstNode = chain.nodes.sort((a, b) => a.x - b.x)[0];
+      const screenX = (firstNode.x * view.zoom) + view.x;
+      const screenY = (firstNode.y * view.zoom) + view.y;
+
+      const isActive = chain.nodeIds.size === activeChainIds.size &&
+        [...chain.nodeIds].every(id => activeChainIds.has(id));
+
+      return {
+        key: `play-btn-${firstNode.id}`,
+        idSet: chain.nodeIds,
+        x: screenX,
+        y: screenY,
+        zoom: view.zoom,
+        state: isActive ? 'stop' : 'start'
+      };
+    }).filter(Boolean);
+  }, [nodes, wires, activeChainIds, view.x, view.y, view.zoom]);
 
   return (
     <div
@@ -725,6 +936,24 @@ function App() {
         />
       )}
 
+      {effectsBootstrapError && (
+        <div
+          style={{
+            position: 'fixed',
+            top: '12px',
+            right: '12px',
+            zIndex: 300,
+            color: 'rgba(255, 170, 170, 0.95)',
+            fontSize: '11px',
+            maxWidth: '360px',
+            textAlign: 'right',
+            pointerEvents: 'none'
+          }}
+        >
+          Effects manifest error: {effectsBootstrapError}
+        </div>
+      )}
+
       <Dashboard
         flowNodes={renderNodes}
         flowEdges={flowEdges}
@@ -736,9 +965,35 @@ function App() {
         onSelectionStart={handleSelectionStart}
         onSelectionEnd={handleSelectionEnd}
         onNodeClick={handleNodeClick}
+        onNodeDragStart={pushHistory}
         onNodeContextMenu={handleNodeContextMenu}
         onViewportChange={handleViewportChange}
       />
+
+      {allPlayButtonContexts.map(context => (
+        <div key={context.key} style={{
+          position: 'fixed',
+          top: context.y,
+          left: context.x,
+          zIndex: 150,
+          transform: `translate(-50%, -50%) scale(${context.zoom})`,
+          pointerEvents: isSelecting ? 'none' : 'auto',
+          isolation: 'isolate',
+          transformOrigin: 'center center'
+        }}>
+          <ActivationButton
+            state={context.state}
+            onClick={() => {
+              if (context.state === 'start') {
+                setActiveChainIds(context.idSet);
+              } else {
+                setActiveChainIds(new Set());
+              }
+            }}
+            isHovered={isInterfaceHovered}
+          />
+        </div>
+      ))}
 
       <div
         style={{
@@ -768,27 +1023,24 @@ function App() {
             onSpawn={handleSpawnNode}
             onLoadChain={handleLoadChain}
             isHovered={isInterfaceHovered}
+            effectOptions={effectOptions}
+            selectionContext={selectionContext}
+            onActivateChain={handleActivateChain}
           />
         </div>
-
-        {selectionContext && (
-          <div style={{
-
-            pointerEvents: isSelecting ? 'none' : 'auto',
-
-            transform: 'translateZ(0)',
-            isolation: 'isolate'
-          }}>
-            <ActivationButton
-              state={selectionContext.state}
-              onClick={handleActivateChain}
-              isHovered={isInterfaceHovered}
-            />
-          </div>
-        )}
       </div>
 
-
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={[
+            { label: 'Duplicate', onClick: () => handleDuplicateNode(contextMenu.nodeId) },
+            { label: 'Remove', onClick: () => handleDeleteNode(contextMenu.nodeId), color: '#ff6666' }
+          ]}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
     </div>
   );
 }

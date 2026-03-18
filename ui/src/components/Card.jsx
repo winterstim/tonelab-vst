@@ -119,13 +119,13 @@ function Card({
                                 <stop offset="1" stopColor="white" stopOpacity="0.1" />
                             </linearGradient>
                         </defs>
-                        {}
+                        { }
                         <g>
                             <rect x="4" y="158" width="25" height="25" rx="12.5" fill="white" fillOpacity="0.05" shapeRendering="geometricPrecision" />
                             <rect x="4.5" y="158.5" width="24" height="24" rx="12" stroke={`url(#ear_l_${id})`} strokeOpacity="0.25" shapeRendering="geometricPrecision" />
                         </g>
 
-                        {}
+                        { }
                         <g>
                             <rect x={50 + bodyWidth + 21} y="158" width="25" height="25" rx="12.5" fill="white" fillOpacity="0.05" shapeRendering="geometricPrecision" />
                             <rect x={50 + bodyWidth + 21 + 0.5} y="158.5" width="24" height="24" rx="12" stroke={`url(#ear_r_${id})`} strokeOpacity="0.25" shapeRendering="geometricPrecision" />
@@ -158,7 +158,7 @@ function Card({
                     position: 'relative'
                 }}
             >
-                {}
+                { }
                 {props.layer !== 'back' && (
                     <div style={{
                         position: 'absolute',
@@ -181,10 +181,10 @@ function Card({
                     </div>
                 )}
 
-                {}
-                {}
+                { }
+                { }
 
-                {}
+                { }
                 <div className="liquid-glass-surface liquid-glass-node-surface" style={{
                     position: 'absolute',
                     top: 0,
@@ -196,29 +196,29 @@ function Card({
                     pointerEvents: 'none'
                 }} />
 
-                {}
-                {}
+                { }
+                { }
                 {showPorts && (
                     <div className="port port-in nodrag nopan" style={{
-                    left: -21, top: 133, width: 75, height: 75, borderRadius: '50%', position: 'absolute',
-                    cursor: 'crosshair', zIndex: 100, pointerEvents: 'auto',
-                    background: 'transparent', border: 'none', boxShadow: 'none'
-                }}
-                    onMouseDown={(e) => { e.stopPropagation(); e.preventDefault();  }}
-                    onMouseUp={(e) => { e.stopPropagation(); if (props.onPortMouseDown) props.onPortMouseDown(id, 'in', e, 'up'); }}
-                />
+                        left: -33.5, top: 120.5, width: 100, height: 100, borderRadius: '50%', position: 'absolute',
+                        cursor: 'crosshair', zIndex: 100, pointerEvents: 'auto',
+                        background: 'transparent', border: 'none', boxShadow: 'none'
+                    }}
+                        onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+                        onMouseUp={(e) => { e.stopPropagation(); if (props.onPortMouseDown) props.onPortMouseDown(id, 'in', e, 'up'); }}
+                    />
                 )}
                 {showPorts && (
                     <div className="port port-out nodrag nopan" style={{
-                    left: 50 + bodyWidth - 4, top: 133, width: 75, height: 75, borderRadius: '50%', position: 'absolute',
-                    cursor: 'crosshair', zIndex: 100, pointerEvents: 'auto',
-                    background: 'transparent', border: 'none', boxShadow: 'none'
-                }}
-                    onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); if (props.onPortMouseDown) props.onPortMouseDown(id, 'out', e, 'down'); }}
-                />
+                        left: 50 + bodyWidth - 16.5, top: 120.5, width: 100, height: 100, borderRadius: '50%', position: 'absolute',
+                        cursor: 'crosshair', zIndex: 100, pointerEvents: 'auto',
+                        background: 'transparent', border: 'none', boxShadow: 'none'
+                    }}
+                        onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); if (props.onPortMouseDown) props.onPortMouseDown(id, 'out', e, 'down'); }}
+                    />
                 )}
 
-                {}
+                { }
                 <div className="card-controls" style={{
                     position: 'absolute',
                     top: 0,
@@ -257,12 +257,20 @@ function Card({
                                         size={KNOB_SIZE}
                                         value={normalizedValue}
                                         label={config.label}
+                                        onDragStart={(normVal) => {
+                                            let startVal = (normVal * range) + config.min;
+                                            if (config.step) startVal = Math.round(startVal / config.step) * config.step;
+                                            if (props.onParamDragStart) props.onParamDragStart(id, key, startVal);
+                                        }}
                                         onChange={(normVal) => {
                                             let newVal = (normVal * range) + config.min;
                                             if (config.step) newVal = Math.round(newVal / config.step) * config.step;
                                             if (newVal < config.min) newVal = config.min;
                                             if (newVal > config.max) newVal = config.max;
                                             props.onParamChange && props.onParamChange(id, key, newVal);
+                                        }}
+                                        onDoubleClick={() => {
+                                            if (props.onDoubleClickKnob) props.onDoubleClickKnob(id, key);
                                         }}
                                     />
                                 </div>

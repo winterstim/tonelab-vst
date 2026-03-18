@@ -24,11 +24,14 @@ The UI is a React application rendered in a `wry` WebView inside the Rust plugin
 
 IPC bridge messages are sent via `window.ipc.postMessage(...)`:
 
-1. Full chain payload (array)
+1. Full chain payload (`sync_chain`)
 ```json
-[
-  { "type": "Overdrive", "params": { "drive": 0.6, "mix": 1.0, "output_gain": 1.0 } }
-]
+{
+  "type": "sync_chain",
+  "data": [
+    { "type": "Overdrive", "params": { "drive": 0.6, "mix": 1.0, "output_gain": 1.0 } }
+  ]
+}
 ```
 
 2. Parameter update payload
@@ -76,13 +79,11 @@ Run lint:
 npm run lint
 ```
 
-## Embedding Into Plugin
+## Loading In Plugin
 
-The Rust plugin embeds `ui/dist/index.html` at compile time (`include_str!`).
-
-Important:
-- If you change UI code, run `npm run build` before rebuilding Rust plugin.
-- The plugin will display whichever `ui/dist/index.html` existed at compile time.
+The Rust plugin does not embed UI assets. It loads a remote UI URL from `/vst/sync`
+(`assets.web_ui_url`) and renders it inside the WebView. This means UI updates do not
+require rebuilding the VST bundle.
 
 ## Environment Variables
 
@@ -97,11 +98,16 @@ Runtime variables injected by Rust in embedded VST mode:
 - `window.TONELAB_API_BASE_URL`
 - `window.TONELAB_WEB_BASE_URL`
 - `window.TONELAB_API_PREFIX`
+- `window.TONELAB_EVERGREEN_WEB_UI_URL`
+- `window.TONELAB_EVERGREEN_ICONS_URL`
+- `window.TONELAB_EVERGREEN_EFFECTS_URL`
+- `window.TONELAB_RUNTIME_ENV`
 
 Rust host/runtime environment sources for those injected values:
 - `TONELAB_API_BASE_URL`
 - `TONELAB_WEB_BASE_URL` (or `FRONTEND_URL` fallback)
 - `TONELAB_API_PREFIX`
+- `TONELAB_EVERGREEN_WEB_UI_URL` (override)
 
 Optional update-check metadata variables:
 - `VITE_TONELAB_PLUGIN_VERSION`
@@ -118,7 +124,8 @@ For practical defaults, copy and edit:
 - Handles desktop OAuth flow via external browser.
 - Polls for desktop token.
 - Stores access/refresh tokens in local storage.
-- Calls Assistant chain generation endpoint and normalizes payload to supported effect schema.
+- Calls Assistant chain generation endpoint and normalizes payload based on the
+  runtime effects manifest delivered by backend.
 
 ## Update Service Behavior
 

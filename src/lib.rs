@@ -1,13 +1,12 @@
 #![allow(unexpected_cfgs)]
 
-use arc_swap::ArcSwap;
 use nih_plug::prelude::*;
 use raw_window_handle::{HandleError, HasWindowHandle, RawWindowHandle, WindowHandle};
 use serde_json::Value;
 use std::collections::HashSet;
 use std::sync::{
     atomic::{AtomicBool, AtomicU32, Ordering},
-    Arc,
+    Arc, Mutex,
 };
 use wry::{
     http::{Request, Uri},
@@ -75,8 +74,8 @@ impl<'a> HasWindowHandle for ViewWrapper<'a> {
 }
 
 pub mod device;
-pub mod dsp;
-use dsp::Chain;
+pub mod evergreen;
+use evergreen::EvergreenEngine;
 
 const PLUGIN_VENDOR_URL: &str = match option_env!("TONELAB_VENDOR_URL") {
     Some(value) => value,
@@ -113,9 +112,11 @@ const ENV_API_BASE_URL: &str = "TONELAB_API_BASE_URL";
 const ENV_WEB_BASE_URL: &str = "TONELAB_WEB_BASE_URL";
 const ENV_FRONTEND_URL: &str = "FRONTEND_URL";
 const ENV_API_PREFIX: &str = "TONELAB_API_PREFIX";
+const ENV_EVERGREEN_WEB_UI_URL: &str = "TONELAB_EVERGREEN_WEB_UI_URL";
 const ENV_ALLOWED_EXTERNAL_HOSTS: &str = "TONELAB_ALLOWED_EXTERNAL_HOSTS";
 const ENV_ENABLE_DEVTOOLS: &str = "TONELAB_ENABLE_DEVTOOLS";
 const ENV_LOG_FILE_PATH: &str = "TONELAB_LOG_FILE_PATH";
+const DEFAULT_EVERGREEN_WEB_UI_URL: &str = "";
 
 fn read_env_non_empty(name: &str) -> Option<String> {
     std::env::var(name)
@@ -160,6 +161,33 @@ fn resolve_api_prefix() -> String {
         .map(|value| normalize_api_prefix(&value))
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| normalize_api_prefix(DEFAULT_API_PREFIX))
+}
+
+fn is_http_or_https_url(value: &str) -> bool {
+    let parsed = match value.parse::<Uri>() {
+        Ok(uri) => uri,
+        Err(_) => return false,
+    };
+    let scheme = parsed
+        .scheme_str()
+        .map(|entry| entry.to_ascii_lowercase())
+        .unwrap_or_default();
+    (scheme == "http" || scheme == "https") && parsed.host().is_some()
+}
+
+fn resolve_evergreen_ui_url(preferred: Option<&str>) -> String {
+    let preferred = preferred
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let env_override = read_env_non_empty(ENV_EVERGREEN_WEB_UI_URL);
+    let candidate = preferred
+        .or(env_override)
+        .unwrap_or_else(|| DEFAULT_EVERGREEN_WEB_UI_URL.to_string());
+    if is_http_or_https_url(&candidate) {
+        candidate
+    } else {
+        "about:blank".to_string()
+    }
 }
 
 fn env_bool(name: &str) -> Option<bool> {
@@ -269,7 +297,10 @@ fn open_external_url(url: &str) {
     let result = std::process::Command::new("open").arg(url).spawn();
 
     #[cfg(target_os = "windows")]
-    let result = std::process::Command::new("explorer.exe").arg(url).spawn();
+    let result = std::process::Command::new("rundll32.exe")
+        .arg("url.dll,FileProtocolHandler")
+        .arg(url)
+        .spawn();
 
     #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
     let result = std::process::Command::new("xdg-open").arg(url).spawn();
@@ -290,7 +321,7 @@ fn open_external_url(url: &str) {
 
 pub struct TonelabPlugin {
     params: Arc<TonelabParams>,
-    chain_state: Arc<ArcSwap<Chain>>,
+    evergreen_engine: Arc<Mutex<EvergreenEngine>>,
     sample_rate: f32,
 }
 
@@ -317,27 +348,17 @@ impl Default for TonelabParams {
 
 impl Default for TonelabPlugin {
     fn default() -> Self {
-        let default_chain = Chain::new();
-
         Self {
             params: Arc::new(TonelabParams::default()),
-            chain_state: Arc::new(ArcSwap::from_pointee(default_chain)),
+            evergreen_engine: Arc::new(Mutex::new(EvergreenEngine::new(get_data_dir()))),
             sample_rate: 44100.0,
         }
     }
 }
 
 impl TonelabPlugin {
-    #[inline]
-    fn process_stereo_frame(chain: &Chain, in_l: f32, in_r: f32, gain: f32) -> (f32, f32) {
-        let (out_l, out_r) = chain.process(in_l, in_r);
-        (out_l * gain, out_r * gain)
-    }
-
-    #[inline]
-    fn process_mono_frame(chain: &Chain, input: f32, gain: f32) -> f32 {
-        let (out_l, _) = chain.process(input, input);
-        out_l * gain
+    fn bypass_sample(sample: f32, gain: f32) -> f32 {
+        sample * gain
     }
 }
 
@@ -348,12 +369,12 @@ impl Vst3Plugin for TonelabPlugin {
 }
 
 impl Plugin for TonelabPlugin {
-    const NAME: &'static str = "Tonelab VST";
+    const NAME: &'static str = concat!("Tonelab VST v", env!("CARGO_PKG_VERSION"));
     const VENDOR: &'static str = "Tonelab";
     const URL: &'static str = PLUGIN_VENDOR_URL;
     const EMAIL: &'static str = PLUGIN_SUPPORT_EMAIL;
 
-    const VERSION: &'static str = "0.1.0";
+    const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
     const AUDIO_IO_LAYOUTS: &'static [AudioIOLayout] = &[AudioIOLayout {
         main_input_channels: NonZeroU32::new(2),
@@ -374,9 +395,25 @@ impl Plugin for TonelabPlugin {
     }
 
     fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
+        let (evergreen_web_ui_url, evergreen_icons_url, evergreen_effects_url) = self
+            .evergreen_engine
+            .lock()
+            .ok()
+            .map(|engine| {
+                (
+                    engine.web_ui_url().map(|value| value.to_string()),
+                    engine.icons_url().map(|value| value.to_string()),
+                    engine.effects_url().map(|value| value.to_string()),
+                )
+            })
+            .unwrap_or((None, None, None));
+
         Some(Box::new(TonelabEditor {
             params: self.params.clone(),
-            chain_state: self.chain_state.clone(),
+            evergreen_engine: self.evergreen_engine.clone(),
+            evergreen_web_ui_url,
+            evergreen_icons_url,
+            evergreen_effects_url,
             scale_factor_bits: AtomicU32::new(1.0f32.to_bits()),
             is_open: Arc::new(AtomicBool::new(false)),
         }))
@@ -390,11 +427,18 @@ impl Plugin for TonelabPlugin {
     ) -> bool {
         self.sample_rate = buffer_config.sample_rate;
 
-        let current = self.chain_state.load();
-        if let Ok(json) = current.to_json() {
-            if let Ok(mut new_chain) = Chain::from_json(&json) {
-                new_chain.reset(self.sample_rate);
-                self.chain_state.store(Arc::new(new_chain));
+        if let Ok(mut evergreen_engine) = self.evergreen_engine.lock() {
+            evergreen_engine.set_sample_rate(self.sample_rate);
+
+            if let Err(error) = evergreen_engine.bootstrap() {
+                log_to_file(&format!("Evergreen bootstrap failed: {}", error));
+            } else {
+                if let Some(version) = evergreen_engine.active_version() {
+                    log_to_file(&format!("Evergreen bundle active: {}", version));
+                }
+                if let Some(error) = evergreen_engine.last_error() {
+                    log_to_file(error);
+                }
             }
         }
 
@@ -402,12 +446,8 @@ impl Plugin for TonelabPlugin {
     }
 
     fn reset(&mut self) {
-        let current = self.chain_state.load();
-        if let Ok(json) = current.to_json() {
-            if let Ok(mut new_chain) = Chain::from_json(&json) {
-                new_chain.reset(self.sample_rate);
-                self.chain_state.store(Arc::new(new_chain));
-            }
+        if let Ok(mut evergreen_engine) = self.evergreen_engine.lock() {
+            evergreen_engine.set_sample_rate(self.sample_rate);
         }
     }
 
@@ -417,7 +457,11 @@ impl Plugin for TonelabPlugin {
         _aux: &mut AuxiliaryBuffers,
         _context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
-        let chain_guard = self.chain_state.load();
+        let mut evergreen_guard = self.evergreen_engine.try_lock().ok();
+        let mut evergreen_ready = evergreen_guard
+            .as_ref()
+            .map(|engine| engine.has_runtime())
+            .unwrap_or(false);
 
         for channel_samples in buffer.iter_samples() {
             let gain = self.params.gain.value();
@@ -429,7 +473,24 @@ impl Plugin for TonelabPlugin {
                 (Some(l), Some(r)) => (l, r),
                 (Some(l), None) => {
                     let in_l = *l;
-                    *l = Self::process_mono_frame(chain_guard.as_ref(), in_l, gain);
+                    if evergreen_ready {
+                        if let Some(engine) = evergreen_guard.as_mut() {
+                            match engine.process_frame(in_l, in_l) {
+                                Ok((out_l, _)) => {
+                                    *l = out_l * gain;
+                                    continue;
+                                }
+                                Err(error) => {
+                                    log_to_file(&format!(
+                                        "Evergreen process failed, switching to bypass for this block: {}",
+                                        error
+                                    ));
+                                    evergreen_ready = false;
+                                }
+                            }
+                        }
+                    }
+                    *l = Self::bypass_sample(in_l, gain);
                     continue;
                 }
                 _ => continue,
@@ -437,10 +498,27 @@ impl Plugin for TonelabPlugin {
 
             let in_l = *l;
             let in_r = *r;
-            let (out_l, out_r) = Self::process_stereo_frame(chain_guard.as_ref(), in_l, in_r, gain);
+            if evergreen_ready {
+                if let Some(engine) = evergreen_guard.as_mut() {
+                    match engine.process_frame(in_l, in_r) {
+                        Ok((out_l, out_r)) => {
+                            *l = out_l * gain;
+                            *r = out_r * gain;
+                            continue;
+                        }
+                        Err(error) => {
+                            log_to_file(&format!(
+                                "Evergreen process failed, switching to bypass for this block: {}",
+                                error
+                            ));
+                            evergreen_ready = false;
+                        }
+                    }
+                }
+            }
 
-            *l = out_l;
-            *r = out_r;
+            *l = Self::bypass_sample(in_l, gain);
+            *r = Self::bypass_sample(in_r, gain);
         }
 
         ProcessStatus::Normal
@@ -488,6 +566,10 @@ fn save_token_globally(token: &str) {
             let _ = std::fs::create_dir_all(parent);
         }
         let _ = std::fs::write(&path, token);
+        log_to_file(&format!(
+            "Saved token to ~/.tonelab_auth_token: {} chars",
+            token.len()
+        ));
     }
 }
 
@@ -580,7 +662,10 @@ fn get_data_dir() -> std::path::PathBuf {
 struct TonelabEditor {
     #[allow(dead_code)] // params are kept alive by Arc but not read directly in Editor struct
     params: Arc<TonelabParams>,
-    chain_state: Arc<ArcSwap<Chain>>,
+    evergreen_engine: Arc<Mutex<EvergreenEngine>>,
+    evergreen_web_ui_url: Option<String>,
+    evergreen_icons_url: Option<String>,
+    evergreen_effects_url: Option<String>,
     scale_factor_bits: AtomicU32,
     is_open: Arc<AtomicBool>,
 }
@@ -627,9 +712,7 @@ impl Editor for TonelabEditor {
         parent: ParentWindowHandle,
         _context: Arc<dyn GuiContext>,
     ) -> Box<dyn std::any::Any + Send> {
-        let chain_state = self.chain_state.clone();
-
-        const HTML_CONTENT: &str = include_str!("../ui/dist/index.html");
+        let evergreen_engine = self.evergreen_engine.clone();
 
         let device_info = device::get_current_device_info();
         let device_info_json =
@@ -641,10 +724,22 @@ impl Editor for TonelabEditor {
         let web_base_url = resolve_web_base_url();
         let api_prefix = resolve_api_prefix();
         let plugin_version = <TonelabPlugin as Plugin>::VERSION;
+        let evergreen_web_ui_url = self.evergreen_web_ui_url.clone().unwrap_or_default();
+        let evergreen_icons_url = self.evergreen_icons_url.clone().unwrap_or_default();
+        let evergreen_effects_url = self.evergreen_effects_url.clone().unwrap_or_default();
+        let ui_url = resolve_evergreen_ui_url(Some(&evergreen_web_ui_url));
 
         let init_script = format!(
-            "window.DEVICE_INFO = {}; window.RUST_AUTH_TOKEN = {:?}; window.TONELAB_API_BASE_URL = {:?}; window.TONELAB_WEB_BASE_URL = {:?}; window.TONELAB_API_PREFIX = {:?}; window.TONELAB_PLUGIN_VERSION = {:?};",
-            device_info_json, saved_token, api_base_url, web_base_url, api_prefix, plugin_version
+            "window.DEVICE_INFO = {}; window.RUST_AUTH_TOKEN = {:?}; window.TONELAB_API_BASE_URL = {:?}; window.TONELAB_WEB_BASE_URL = {:?}; window.TONELAB_API_PREFIX = {:?}; window.TONELAB_PLUGIN_VERSION = {:?}; window.TONELAB_EVERGREEN_WEB_UI_URL = {:?}; window.TONELAB_EVERGREEN_ICONS_URL = {:?}; window.TONELAB_EVERGREEN_EFFECTS_URL = {:?}; window.TONELAB_RUNTIME_ENV = 'vst-embedded';",
+            device_info_json,
+            saved_token,
+            api_base_url,
+            web_base_url,
+            api_prefix,
+            plugin_version,
+            evergreen_web_ui_url,
+            evergreen_icons_url,
+            evergreen_effects_url
         );
 
         let wrapper = ViewWrapper(&parent);
@@ -658,7 +753,7 @@ impl Editor for TonelabEditor {
         let webview_result = WebViewBuilder::new_as_child(&wrapper)
             .with_web_context(&mut context)
             .with_devtools(webview_devtools_enabled())
-            .with_html(HTML_CONTENT)
+            .with_url(&ui_url)
             .with_initialization_script(&init_script)
             // Initialize child bounds from logical editor size * host scale factor.
             // This keeps plugin UI placement/sizing aligned with host expectations on Windows/Linux HiDPI.
@@ -671,25 +766,60 @@ impl Editor for TonelabEditor {
             .with_background_color((30, 30, 30, 255)) // Dark grey background
             .with_ipc_handler(move |req: Request<String>| {
                 let msg = req.body();
+                let apply_chain = |chain_json: &str, evergreen_engine: &Arc<Mutex<EvergreenEngine>>| {
+                    if let Ok(mut engine) = evergreen_engine.lock() {
+                        if !engine.has_runtime() {
+                            if let Err(error) = engine.bootstrap() {
+                                log_to_file(&format!("IPC sync_chain bootstrap failed: {}", error));
+                                return;
+                            }
+                        }
+                        if let Err(error) = engine.sync_chain_json(chain_json) {
+                            log_to_file(&format!("IPC sync_chain apply failed: {}", error));
+                        }
+                    } else {
+                        log_to_file("IPC sync_chain: failed to lock evergreen engine");
+                    }
+                };
+
                 if let Ok(value) = serde_json::from_str::<Value>(msg) {
                     if value.is_array() {
-                        match Chain::from_json(msg) {
-                            Ok(mut new_chain) => {
-                                new_chain.reset(44100.0);
-                                chain_state.store(Arc::new(new_chain));
-                            }
-                            Err(_e) => {}
-                        }
+                        apply_chain(msg, &evergreen_engine);
                     } else if value.is_object() {
                         if let Some(msg_type) = value.get("type").and_then(|v| v.as_str()) {
-                            if msg_type == "param_change" {
+                            if msg_type == "sync_chain" {
+                                if let Some(chain_data) = value.get("data") {
+                                    if let Ok(chain_json) = serde_json::to_string(chain_data) {
+                                        apply_chain(&chain_json, &evergreen_engine);
+                                    }
+                                }
+                            } else if msg_type == "param_change" {
                                 if let (Some(index), Some(key), Some(val)) = (
                                     value.get("index").and_then(|v| v.as_u64()),
                                     value.get("param_key").and_then(|v| v.as_str()),
                                     value.get("value").and_then(|v| v.as_f64()),
                                 ) {
-                                    let current_chain = chain_state.load();
-                                    current_chain.set_param(index as usize, key, val as f32);
+                                    if let Ok(mut engine) = evergreen_engine.lock() {
+                                        if !engine.has_runtime() {
+                                            if let Err(error) = engine.bootstrap() {
+                                                log_to_file(&format!(
+                                                    "IPC param_change bootstrap failed: {}",
+                                                    error
+                                                ));
+                                                return;
+                                            }
+                                        }
+                                        if let Err(error) =
+                                            engine.set_param(index as i32, key, val as f32)
+                                        {
+                                            log_to_file(&format!(
+                                                "IPC param_change apply failed: index={} key={} error={}",
+                                                index, key, error
+                                            ));
+                                        }
+                                    } else {
+                                        log_to_file("IPC param_change: failed to lock evergreen engine");
+                                    }
                                 }
                             } else if msg_type == "open_external_url" {
                                 if let Some(url) = value.get("url").and_then(|v| v.as_str()) {
@@ -775,48 +905,6 @@ impl Editor for TonelabEditor {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn process_stereo_frame_matches_chain_output_on_both_channels() {
-        let json = serde_json::json!([
-            {
-                "type": "Overdrive",
-                "params": { "drive": 1.0, "mix": 1.0, "output_gain": 1.0 }
-            }
-        ])
-        .to_string();
-
-        let chain = Chain::from_json(&json).expect("test chain should parse");
-        let in_l = 0.35;
-        let in_r = -0.52;
-        let gain = 0.8;
-
-        let (out_l, out_r) = TonelabPlugin::process_stereo_frame(&chain, in_l, in_r, gain);
-        let (expected_l, expected_r) = chain.process(in_l, in_r);
-
-        assert!((out_l - (expected_l * gain)).abs() < 1e-6);
-        assert!((out_r - (expected_r * gain)).abs() < 1e-6);
-    }
-
-    #[test]
-    fn process_mono_frame_matches_left_channel_of_duplicated_input() {
-        let json = serde_json::json!([
-            {
-                "type": "Overdrive",
-                "params": { "drive": 0.8, "mix": 0.9, "output_gain": 1.0 }
-            }
-        ])
-        .to_string();
-
-        let chain = Chain::from_json(&json).expect("test chain should parse");
-        let input = 0.42;
-        let gain = 1.25;
-
-        let out = TonelabPlugin::process_mono_frame(&chain, input, gain);
-        let (expected_l, _) = chain.process(input, input);
-
-        assert!((out - (expected_l * gain)).abs() < 1e-6);
-    }
 
     #[test]
     fn normalize_api_prefix_handles_common_forms() {

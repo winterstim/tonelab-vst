@@ -1,0 +1,6 @@
+# Exclude local build artifacts and dev keys from Cloud Run source deploy
+.bin/
+security/keys/
+backend
+**/*.log
+**/.DS_Store

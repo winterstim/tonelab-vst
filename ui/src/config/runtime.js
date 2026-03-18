@@ -1,6 +1,10 @@
 const LOCAL_DEFAULT_API_BASE = 'https://api.tonelab.dev/api/v1';
 const LOCAL_DEFAULT_WEB_BASE = 'https://tonelab.dev';
 const DEFAULT_API_PREFIX = '';
+const RUNTIME_ENV_VST = 'vst-embedded';
+const RUNTIME_ENV_DEV_BROWSER = 'browser-dev';
+const RUNTIME_ENV_WEB = 'browser-web';
+const RUNTIME_ENV_SSR = 'ssr';
 
 function readFirstStringValue(candidates) {
     for (const candidate of candidates) {
@@ -79,3 +83,57 @@ export function buildWebUrl(path) {
     const normalizedPath = path.startsWith('/') ? path : `/${path}`;
     return `${getWebBaseUrl()}${normalizedPath}`;
 }
+
+export function getIsInsideVST() {
+    return detectRuntimeEnvironment() === RUNTIME_ENV_VST;
+}
+
+export function getAssetsBaseUrl() {
+    const configuredBase = readFirstStringValue([
+        import.meta.env.VITE_TONELAB_ASSETS_BASE_URL,
+        readWindowString('TONELAB_ASSETS_BASE_URL')
+    ]);
+    return normalizeOrigin(configuredBase, 'https://assets.tonelab.dev');
+}
+
+export function getEvergreenIconsUrl() {
+    return readFirstStringValue([readWindowString('TONELAB_EVERGREEN_ICONS_URL')]);
+}
+
+export function getEvergreenEffectsUrl() {
+    return readFirstStringValue([readWindowString('TONELAB_EVERGREEN_EFFECTS_URL')]);
+}
+
+export function detectRuntimeEnvironment() {
+    if (typeof window === 'undefined') return RUNTIME_ENV_SSR;
+
+    const runtimeOverride = readWindowString('TONELAB_RUNTIME_ENV').toLowerCase();
+    if (
+        runtimeOverride === RUNTIME_ENV_VST ||
+        runtimeOverride === RUNTIME_ENV_DEV_BROWSER ||
+        runtimeOverride === RUNTIME_ENV_WEB
+    ) {
+        return runtimeOverride;
+    }
+
+    const hasEmbeddedBridge = !!(
+        window.ipc?.postMessage ||
+        window.chrome?.webview ||
+        window.webkit?.messageHandlers
+    );
+    if (hasEmbeddedBridge) return RUNTIME_ENV_VST;
+
+    const hostname = (window.location?.hostname || '').toLowerCase();
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+        return RUNTIME_ENV_DEV_BROWSER;
+    }
+
+    return RUNTIME_ENV_WEB;
+}
+
+export const RuntimeEnvironment = {
+    VST_EMBEDDED: RUNTIME_ENV_VST,
+    BROWSER_DEV: RUNTIME_ENV_DEV_BROWSER,
+    BROWSER_WEB: RUNTIME_ENV_WEB,
+    SSR: RUNTIME_ENV_SSR
+};

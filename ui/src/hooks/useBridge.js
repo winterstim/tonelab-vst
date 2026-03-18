@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { postIpcMessage } from '../utils/ipcBridge';
 
 export function useBridge(nodes) {
     const lastSentRef = useRef("");
@@ -7,19 +8,6 @@ export function useBridge(nodes) {
 
         const sortedNodes = [...nodes].sort((a, b) => a.x - b.x);
 
-
-
-        const topology = sortedNodes.map(n => ({
-            type: n.type,
-            id: n.id
-
-        }));
-
-        const topologyJson = JSON.stringify(topology);
-
-
-        if (topologyJson === lastSentRef.current) return;
-        lastSentRef.current = topologyJson;
 
 
         const chain = sortedNodes.map(node => {
@@ -37,12 +25,17 @@ export function useBridge(nodes) {
             };
         });
 
-        const json = JSON.stringify(chain);
+        const payload = {
+            type: 'sync_chain',
+            data: chain
+        };
+        const json = JSON.stringify(payload);
+
+        if (json === lastSentRef.current) return;
+        lastSentRef.current = json;
 
 
-        if (window.ipc) {
-            window.ipc.postMessage(json);
-        }
+        postIpcMessage(payload);
 
     }, [nodes]);
 }

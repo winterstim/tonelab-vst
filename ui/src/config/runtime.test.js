@@ -1,5 +1,12 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { buildApiUrl, buildWebUrl, getApiBaseUrl, getWebBaseUrl } from './runtime';
+import {
+    RuntimeEnvironment,
+    buildApiUrl,
+    buildWebUrl,
+    detectRuntimeEnvironment,
+    getApiBaseUrl,
+    getWebBaseUrl
+} from './runtime';
 
 const originalWindow = globalThis.window;
 
@@ -19,9 +26,9 @@ describe('runtime config', () => {
             globalThis.window = {};
         }
 
-        expect(getApiBaseUrl()).toBe('https://robust-dulciana-tonelab-49d88bd9.koyeb.app/api/v1');
+        expect(getApiBaseUrl()).toBe('https://api.tonelab.dev/api/v1');
         expect(getWebBaseUrl()).toBe('https://tonelab.dev');
-        expect(buildApiUrl('/health')).toBe('https://robust-dulciana-tonelab-49d88bd9.koyeb.app/api/v1/health');
+        expect(buildApiUrl('/health')).toBe('https://api.tonelab.dev/api/v1/health');
         expect(buildWebUrl('/docs')).toBe('https://tonelab.dev/docs');
     });
 
@@ -44,5 +51,31 @@ describe('runtime config', () => {
 
         expect(getApiBaseUrl()).toBe('https://api.example.com/api/v1');
         expect(buildApiUrl('/health')).toBe('https://api.example.com/api/v1/health');
+    });
+
+    it('detects embedded VST runtime using ipc bridge', () => {
+        globalThis.window = {
+            ipc: { postMessage: () => {} },
+            location: { hostname: 'localhost' }
+        };
+
+        expect(detectRuntimeEnvironment()).toBe(RuntimeEnvironment.VST_EMBEDDED);
+    });
+
+    it('detects browser dev runtime on localhost', () => {
+        globalThis.window = {
+            location: { hostname: 'localhost' }
+        };
+
+        expect(detectRuntimeEnvironment()).toBe(RuntimeEnvironment.BROWSER_DEV);
+    });
+
+    it('supports explicit runtime override', () => {
+        globalThis.window = {
+            TONELAB_RUNTIME_ENV: 'browser-web',
+            location: { hostname: 'localhost' }
+        };
+
+        expect(detectRuntimeEnvironment()).toBe(RuntimeEnvironment.BROWSER_WEB);
     });
 });

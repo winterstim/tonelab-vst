@@ -2,11 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
     LogoIcon,
     LogoIconWhite,
-    WaveIcon,
-    TrapezoidIcon,
-    ArrowsIcon,
-    SquigglyIcon,
-    ClockIcon,
     DotsIcon
 } from './Icons';
 import { generateChainFromPrompt } from '../services/tonelabApi';
@@ -16,7 +11,7 @@ import './Toolbar.css';
 
 import { Tooltip } from './Tooltip';
 
-export default function Toolbar({ onSpawn, onLoadChain, isHovered }) {
+export default function Toolbar({ onSpawn, onLoadChain, isHovered, effectOptions = [] }) {
     const [hoveredItem, setHoveredItem] = useState(null);
     const [isOptionsOpen, setIsOptionsOpen] = useState(false);
     const [isInputMode, setIsInputMode] = useState(false);
@@ -25,14 +20,6 @@ export default function Toolbar({ onSpawn, onLoadChain, isHovered }) {
     const [statusText, setStatusText] = useState('');
     const [errorText, setErrorText] = useState('');
     const submitAbortRef = useRef(null);
-
-    const options = [
-        { id: 'btn1', type: 'Equalizer', label: 'Equalizer', Icon: WaveIcon },
-        { id: 'btn2', type: 'Overdrive', label: 'Overdrive', Icon: TrapezoidIcon },
-        { id: 'btn3', type: 'NoiseGate', label: 'Noise Gate', Icon: ArrowsIcon },
-        { id: 'btn4', type: 'Reverb', label: 'Reverb', Icon: SquigglyIcon },
-        { id: 'btn5', type: 'Delay', label: 'Delay', Icon: ClockIcon },
-    ];
 
     useEffect(() => {
         const handleClickOutside = () => setIsOptionsOpen(false);
@@ -141,20 +128,40 @@ export default function Toolbar({ onSpawn, onLoadChain, isHovered }) {
 
                     {!isInputMode ? (
                         <>
-                            {options.map((item) => (
+                            {effectOptions.map((item, index) => (
                                 <div
-                                    key={item.id}
+                                    key={item.id || item.type || `effect-${index}`}
                                     className="toolbar-item option"
                                     style={{ position: 'relative' }}
                                     onMouseDown={(e) => {
                                         e.stopPropagation();
-                                        onSpawn(item.type);
+                                        onSpawn(item.type || item.id);
                                     }}
-                                    onMouseEnter={() => setHoveredItem(item.id)}
+                                    onMouseEnter={() => setHoveredItem(item.id || item.type)}
                                     onMouseLeave={() => setHoveredItem(null)}
                                 >
-                                    <item.Icon />
-                                    {hoveredItem === item.id && <Tooltip text={item.label} />}
+                                    {item.icon_url ? (
+                                        <img
+                                            src={item.icon_url}
+                                            alt={item.label || item.type || item.id}
+                                            width={20}
+                                            height={20}
+                                            draggable={false}
+                                            style={{ objectFit: 'contain', filter: 'brightness(0) invert(1)' }}
+                                        />
+                                    ) : (
+                                        <span
+                                            style={{
+                                                color: 'rgba(255, 255, 255, 0.9)',
+                                                fontSize: '12px',
+                                                lineHeight: 1,
+                                                fontWeight: 600,
+                                            }}
+                                        >
+                                            {String(item.label || item.type || item.id || '?').slice(0, 1).toUpperCase()}
+                                        </span>
+                                    )}
+                                    {hoveredItem === (item.id || item.type) && <Tooltip text={item.label || item.type || item.id} />}
                                 </div>
                             ))}
 
@@ -197,7 +204,7 @@ export default function Toolbar({ onSpawn, onLoadChain, isHovered }) {
                             </div>
                         </>
                     ) : (
-                        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', paddingLeft: '6px', paddingRight: '0px', position: 'relative' }}>
+                        <div style={{ width: '254px', height: '100%', display: 'flex', alignItems: 'center', paddingLeft: '6px', paddingRight: '0px', position: 'relative' }}>
                             <input
                                 id="toolbar-input"
                                 type="text"

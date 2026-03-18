@@ -22,6 +22,7 @@ export default function Dashboard({
     onSelectionStart,
     onSelectionEnd,
     onViewportChange,
+    onNodeDragStart,
 }) {
     return (
         <div
@@ -48,6 +49,7 @@ export default function Dashboard({
                 onEdgesChange={onEdgesChange}
                 onConnect={onConnect}
                 onNodeClick={onNodeClick}
+                onNodeDragStart={onNodeDragStart}
                 onNodeContextMenu={onNodeContextMenu}
                 isValidConnection={isValidConnection}
                 onMove={(event, viewport) => {
