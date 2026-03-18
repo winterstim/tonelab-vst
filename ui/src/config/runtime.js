@@ -1,5 +1,5 @@
 const LOCAL_DEFAULT_API_BASE = 'https://api.tonelab.dev/api/v1';
-const LOCAL_DEFAULT_WEB_BASE = 'https://tonelab.dev';
+const LOCAL_DEFAULT_WEB_BASE = 'https://ui-4zrbgo8gh-tims-projects-ee1c21b4.vercel.app';
 const DEFAULT_API_PREFIX = '';
 const RUNTIME_ENV_VST = 'vst-embedded';
 const RUNTIME_ENV_DEV_BROWSER = 'browser-dev';

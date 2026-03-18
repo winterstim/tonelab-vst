@@ -11,7 +11,8 @@ const ENV_SYNC_URL: &str = "TONELAB_EVERGREEN_SYNC_URL";
 const ENV_ALLOW_UNSIGNED: &str = "TONELAB_EVERGREEN_ALLOW_UNSIGNED";
 const ENV_PUBLIC_KEY_B64: &str = "TONELAB_EVERGREEN_ED25519_PUBLIC_KEY_B64";
 const EMBEDDED_PUBLIC_KEY_B64: Option<&str> = option_env!("TONELAB_EVERGREEN_PUBLIC_KEY_B64");
-const DEFAULT_SYNC_URL: &str = "http://localhost:8080/vst/sync";
+const DEFAULT_SYNC_URL: &str =
+    "https://tonelab-vst-api-1017035171566.us-central1.run.app/vst/sync";
 const CACHE_DIR_NAME: &str = "evergreen_cache";
 const CACHE_MANIFEST_FILE: &str = "sync_manifest.json";
 const CACHE_WASM_FILE: &str = "engine.wasm";

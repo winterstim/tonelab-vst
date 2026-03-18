@@ -27,9 +27,13 @@ describe('runtime config', () => {
         }
 
         expect(getApiBaseUrl()).toBe('https://api.tonelab.dev/api/v1');
-        expect(getWebBaseUrl()).toBe('https://tonelab.dev');
+        expect(getWebBaseUrl()).toBe(
+            'https://ui-4zrbgo8gh-tims-projects-ee1c21b4.vercel.app'
+        );
         expect(buildApiUrl('/health')).toBe('https://api.tonelab.dev/api/v1/health');
-        expect(buildWebUrl('/docs')).toBe('https://tonelab.dev/docs');
+        expect(buildWebUrl('/docs')).toBe(
+            'https://ui-4zrbgo8gh-tims-projects-ee1c21b4.vercel.app/docs'
+        );
     });
 
     it('uses injected runtime values when present', () => {
