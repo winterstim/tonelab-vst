@@ -1,4 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">
-  <circle cx="12" cy="12" r="7" stroke="#ffffff" stroke-width="2"/>
-  <path d="M12 8v4l3 2" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 35 35" fill="none">
+  <g clip-path="url(#clip0)">
+    <circle cx="17.5" cy="17.5" r="11.5" stroke="#000000" stroke-opacity="1" stroke-width="2"/>
+    <mask id="mask0" fill="white">
+      <path d="M16 11H23V18H16V11Z" />
+    </mask>
+    <path d="M16 18H14V20H16V18ZM23 18V16H16V18V20H23V18ZM16 18H18V11H16H14V18H16Z" fill="#000000" fill-opacity="1" mask="url(#mask0)"/>
+  </g>
+  <defs>
+    <clipPath id="clip0">
+      <rect width="35" height="35" fill="white"/>
+    </clipPath>
+  </defs>
 </svg>

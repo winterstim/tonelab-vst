@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -26,7 +27,7 @@ const (
 	defaultRateLimitRPS  = 60.0
 	defaultRateLimitBurst = 120.0
 	defaultRateLimitTTL  = 2 * time.Minute
-	defaultCORSOrigins   = "*"
+	defaultCORSOrigins   = "http://localhost:5173,https://vst.tonelab.dev,https://tonelab.dev,https://*.vercel.app"
 )
 
 type syncAssets struct {
@@ -256,12 +257,49 @@ func parseCORSOrigins(value string) []string {
 }
 
 func isOriginAllowed(origin string, allowed []string) bool {
+	parsed, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	scheme := strings.ToLower(parsed.Scheme)
+	host := strings.ToLower(parsed.Hostname())
+	if scheme == "" || host == "" {
+		return false
+	}
+
 	for _, entry := range allowed {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
 		if entry == "*" {
 			return true
 		}
 		if origin == entry {
 			return true
+		}
+		if strings.HasPrefix(entry, "http://*.") || strings.HasPrefix(entry, "https://*.") {
+			entryURL, err := url.Parse(entry)
+			if err != nil {
+				continue
+			}
+			entryScheme := strings.ToLower(entryURL.Scheme)
+			entryHost := strings.ToLower(entryURL.Hostname())
+			if entryScheme != "" && entryScheme != scheme {
+				continue
+			}
+			if strings.HasPrefix(entryHost, "*.") {
+				suffix := strings.TrimPrefix(entryHost, "*.")
+				if host == suffix || strings.HasSuffix(host, "."+suffix) {
+					return true
+				}
+			}
+		}
+		if strings.HasPrefix(entry, "*.") {
+			suffix := strings.ToLower(strings.TrimPrefix(entry, "*."))
+			if host == suffix || strings.HasSuffix(host, "."+suffix) {
+				return true
+			}
 		}
 	}
 	return false
