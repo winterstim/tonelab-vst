@@ -147,7 +147,8 @@ export default function Toolbar({ onSpawn, onLoadChain, isHovered, effectOptions
                                             width={20}
                                             height={20}
                                             draggable={false}
-                                            style={{ objectFit: 'contain', filter: 'brightness(0) invert(1)' }}
+                                            className="toolbar-effect-icon"
+                                            style={{ objectFit: 'contain' }}
                                         />
                                     ) : (
                                         <span
