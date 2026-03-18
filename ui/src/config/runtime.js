@@ -93,7 +93,10 @@ export function getAssetsBaseUrl() {
         import.meta.env.VITE_TONELAB_ASSETS_BASE_URL,
         readWindowString('TONELAB_ASSETS_BASE_URL')
     ]);
-    return normalizeOrigin(configuredBase, 'https://assets.tonelab.dev');
+    return normalizeOrigin(
+        configuredBase,
+        'https://tonelab-vst-api-1017035171566.us-central1.run.app/assets'
+    );
 }
 
 export function getEvergreenIconsUrl() {
