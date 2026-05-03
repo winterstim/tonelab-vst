@@ -23,7 +23,7 @@ Environment variables (Vercel Project Settings):
 - `VITE_TONELAB_DEFAULT_WEB_BASE_URL` = same as UI base
 
 After deploy, set the backend env:
-- `EVERGREEN_WEB_UI_URL` = the Vercel URL
+- `WEB_UI_URL` = the Vercel URL
 
 ## Backend (Google Cloud Run)
 

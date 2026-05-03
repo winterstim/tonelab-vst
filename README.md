@@ -1,8 +1,8 @@
-# Tonelab VST ( Architecture)
+# Tonelab VST
 
 Tonelab is a VST3 plugin with a thin native host and remotely delivered runtime assets.
 
-## What Is 
+## Architecture
 
 - The VST bundle contains host/runtime glue and audio I/O.
 - DSP is delivered as signed `engine.wasm` from backend `/vst/sync`.
@@ -17,16 +17,15 @@ Tonelab is a VST3 plugin with a thin native host and remotely delivered runtime 
 - `wasm-engine-rust/`: DSP wasm engine source (Rust)
 - `backend/`: sync API + assets server (Go)
 - `ui/`: remote dashboard app (Vite/React)
-- `scripts/_up.sh`: build/install/start pipeline
-- `scripts/_down.sh`: stop backend/UI started by script
-- `AGENT__BUILD_VERIFY.md`: detailed verification runbook
+- `scripts/evergreen_up.sh`: build/install/start pipeline
+- `scripts/evergreen_down.sh`: stop backend/UI started by script
 
 ## Quick Local Start
 
 From repo root:
 
 ```bash
-./scripts/_up.sh --skip-backup
+./scripts/evergreen_up.sh --skip-backup
 ```
 
 This does, in order:
@@ -60,13 +59,13 @@ test "$asset_sig" = "$sync_sig" && echo "signature ok" || echo "signature mismat
 ## Deployment Model
 
 - Put UI on your domain (e.g. `https://app.example.com`).
-- Set backend `_WEB_UI_URL` to that UI URL.
+- Set backend `WEB_UI_URL` to that UI URL.
 - Backend returns UI URL + signed wasm URLs in `/vst/sync`.
 - Plugin loads UI remotely and applies DSP via wasm runtime.
 
 ## Notes
 
-- Cached  assets are used only after a successful signed load.
+- Cached assets are used only after a successful signed load.
 - If backend is unavailable before first successful sync, DSP runtime is unavailable.
 - Security material under `backend/security/keys/` is local/dev-only and ignored.
 
